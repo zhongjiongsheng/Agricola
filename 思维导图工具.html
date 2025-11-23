@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>农场主 v3.0 - 可编辑思维导图</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            width: 100%;
+            overflow: hidden;
+            background-color: #263238;
+            font-family: 'Segoe UI', "Microsoft YaHei", sans-serif;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* 顶部工具栏 */
+        .toolbar {
+            height: 50px;
+            background: #37474f;
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+            justify-content: space-between;
+            z-index: 10;
+        }
+        .toolbar h1 { margin: 0; font-size: 18px; color: #ffd700; margin-right: 20px; }
+        .btn-group { display: flex; gap: 10px; }
+        
+        button {
+            background: #546e7a; color: white; border: 1px solid #78909c;
+            padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 13px;
+            transition: 0.2s; display: flex; align-items: center; gap: 5px;
+        }
+        button:hover { background: #78909c; border-color: #fff; }
+        button.primary { background: #2e7d32; border-color: #43a047; }
+        button.primary:hover { background: #43a047; }
+        
+        /* 主体布局 */
+        .container {
+            display: flex;
+            flex: 1;
+            height: calc(100% - 50px);
+        }
+
+        /* 左侧编辑器 */
+        .editor-pane {
+            width: 30%;
+            min-width: 300px;
+            background: #1e2529;
+            border-right: 1px solid #455a64;
+            display: flex;
+            flex-direction: column;
+            transition: width 0.3s;
+        }
+        .editor-pane.hidden { width: 0; min-width: 0; overflow: hidden; }
+        
+        textarea {
+            flex: 1;
+            background: #1e2529;
+            color: #cfd8dc;
+            border: none;
+            padding: 15px;
+            font-family: 'Consolas', monospace;
+            font-size: 14px;
+            line-height: 1.5;
+            resize: none;
+            outline: none;
+        }
+        textarea:focus { background: #232b30; }
+
+        /* 右侧预览 */
+        .preview-pane {
+            flex: 1;
+            position: relative;
+            background: #263238;
+        }
+        #mindmap { width: 100%; height: 100%; }
+        
+        /* 滚动条样式 */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #1e2529; }
+        ::-webkit-scrollbar-thumb { background: #546e7a; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #78909c; }
+
+        .tip { font-size: 12px; color: #90a4ae; padding: 5px 15px; background: #151a1d; border-bottom: 1px solid #333; }
+    </style>
+    
+    <!-- 引入 markmap 库 -->
+    <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+    <script src="https://cdn.jsdelivr.net/npm/markmap-view@0.15.4"></script>
+    <script src="https://cdn.jsdelivr.net/npm/markmap-toolbar@0.15.4/dist/index.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/markmap-lib@0.15.4/dist/browser/index.min.js"></script>
+</head>
+<body>
+
+    <div class="toolbar">
+        <div style="display:flex; align-items:center;">
+            <h1>🌾 农场主 v3.0 导图编辑器</h1>
+            <button onclick="toggleEditor()">📝 切换编辑/预览</button>
+        </div>
+        <div class="btn-group">
+            <button onclick="expandAll()">➕ 展开全部</button>
+            <button onclick="collapseAll()">➖ 收缩全部</button>
+            <button onclick="saveLocally()">💾 保存(本地)</button>
+            <button class="primary" onclick="exportHTML()">📤 导出HTML文件</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="editor-pane" id="editorPane">
+            <div class="tip">提示：使用 Tab 缩进增加层级，使用 - 开头创建节点</div>
+            <textarea id="source" spellcheck="false"></textarea>
+        </div>
+        <div class="preview-pane">
+            <svg id="mindmap"></svg>
+        </div>
+    </div>
+
+<script>
+// 1. 默认数据 (v3.0 核心逻辑)
+const DEFAULT_MARKDOWN = `# 🌾 农场主 v3.0 核心机制
+
+## 1. 游戏循环 (Game Loop)
+- **初始化**
+  - 生成玩家: 1 人类 + 3 AI
+  - 分发资源: 2 木屋, 2 工人, 初始食物
+  - 牌堆: 洗混 R1-R6 回合卡
+- **回合流程 (14轮)**
+  - **1. 资源累积**: 行动格自动增加 (如: 森林+3木)
+  - **2. 玩家行动**: 轮流派遣工人，直到所有工人用尽
+  - **3. 回合结束**: 归还工人，清理占用，翻开新卡
+- **收获阶段 (Harvest)**
+  - 触发轮次: 4, 7, 9, 11, 13, 14
+  - **A. 农田**: 作物从田里移入仓库
+  - **B. 喂养**: 消耗2食物/人 (不足则扣分/乞讨)
+  - **C. 繁殖**: 同种动物 >=2 且有窝 -> +1只
+
+## 2. 农场管理 (Farm Board)
+- **地块系统**
+  - **空地 (Empty)**: 初始状态 (扣分项)
+  - **房间 (Room)**: 木->砖->石 (每间限养1只宠物)
+  - **农田 (Field)**: 种植小麦/蔬菜
+  - **马厩 (Stable)**: 增加圈地容量
+- **栅栏系统 (Strict Rules)**
+  - **建造**: 消耗木头，点击格边
+  - **校验**: 必须闭合 (无断头路)
+  - **排他性**: **圈地内只能是空地或马厩**
+  - **功能**: 形成牧场，大幅提升动物容纳量
+
+## 3. 行动系统 (Actions)
+- **新增行动 (v2.8)**
+  - **卖艺**: 1食物(可累积)
+  - **临时工**: 固定 2 食物
+- **核心行动**
+  - **资源**: 森林(木), 粘土坑, 芦苇, 采石
+  - **农业**: 拿种子, 犁地, **自由播种** (支持多田)
+  - **建筑**: **自由建造** (一次性造多房/多马厩)
+- **连锁机制 (Chain)**
+  - **播种 -> 烤面包**: 播种确认后，若有设备可立即把麦转饭
+  - **生娃 -> 打卡**: (暂用买卡代替)
+
+## 4. AI 策略增强 (Smart AI)
+- **生存优先 (Survival)**
+  - 监测距离收获的轮数
+  - 若食物极缺，最高优先级抢: 钓鱼/卖艺/临时工
+- **人口驱动 (Growth)**
+  - 若 **房间 > 人口**: 必抢生人
+  - 若 **房间 <= 人口**: 必抢木/苇 -> 造房
+- **资源权衡**
+  - 优先抢夺累积数量多的资源格 (如 6木 > 2木)
+  - 建造/播种时采用贪婪算法 (能造多少造多少)
+
+## 5. 计分规则 (Real-time Score)
+- **加分项 (+)**
+  - **田地/牧场**: 数量计分
+  - **作物**: 麦/菜 数量
+  - **动物**: 羊/猪/牛 数量
+  - **建筑**: 房等级 * 房数量
+  - **人口**: 3分 / 人
+  - **发展卡**: 卡面分 + 加分卡
+- **扣分项 (-)**
+  - **空地**: 未被利用且未被围住的格子 (-1分/格)
+  - **乞讨**: -3分 / 张
+`;
+
+// 全局变量
+let mm; // markmap 实例
+let transformer; // 转换器
+const editor = document.getElementById('source');
+const svgEl = document.getElementById('mindmap');
+
+// 2. 初始化逻辑
+function init() {
+    // 尝试从 LocalStorage 读取，否则使用默认
+    const savedData = localStorage.getItem('agricola_mindmap_v3');
+    editor.value = savedData ? savedData : DEFAULT_MARKDOWN;
+
+    // 初始化 Markmap 对象
+    const { Transformer } = window.markmap;
+    const { Markmap, loadCSS, loadJS } = window.markmap;
+    
+    transformer = new Transformer();
+    
+    // 创建实例
+    mm = Markmap.create(svgEl, {
+        autoFit: true,
+        fitRatio: 0.95,
+        duration: 500,
+        style: id => {
+            return { color: '#cccccc' } // 默认文字颜色
+        }
+    });
+
+    // 绑定编辑器输入事件
+    editor.addEventListener('input', updateMap);
+    
+    // 首次渲染
+    updateMap();
+}
+
+// 3. 核心：更新导图
+function updateMap() {
+    const content = editor.value;
+    const { root } = transformer.transform(content);
+    mm.setData(root);
+    mm.fit();
+    
+    // 简单的防抖自动保存
+    clearTimeout(window.saveTimer);
+    window.saveTimer = setTimeout(() => {
+        localStorage.setItem('agricola_mindmap_v3', content);
+    }, 1000);
+}
+
+// 4. 功能：展开全部
+function expandAll() {
+    // 重新转换数据，并设置所有节点为展开
+    const { root } = transformer.transform(editor.value);
+    
+    // 递归设置 fold = false (不折叠)
+    const walk = (node) => {
+        node.payload = { ...node.payload, fold: false };
+        if (node.children) node.children.forEach(walk);
+    };
+    walk(root);
+    
+    mm.setData(root);
+    mm.fit();
+}
+
+// 5. 功能：收缩全部 (只保留根节点和第一层)
+function collapseAll() {
+    const { root } = transformer.transform(editor.value);
+    
+    const walk = (node, depth) => {
+        if (depth >= 1) { // 收缩第2层及以下
+            node.payload = { ...node.payload, fold: true };
+        } else {
+            node.payload = { ...node.payload, fold: false };
+        }
+        if (node.children) node.children.forEach(c => walk(c, depth + 1));
+    };
+    walk(root, 0);
+    
+    mm.setData(root);
+    mm.fit();
+}
+
+// 6. 功能：切换编辑器显示/隐藏
+function toggleEditor() {
+    const pane = document.getElementById('editorPane');
+    pane.classList.toggle('hidden');
+    // 动画结束后调整导图大小
+    setTimeout(() => mm.fit(), 350);
+}
+
+// 7. 功能：手动保存
+function saveLocally() {
+    localStorage.setItem('agricola_mindmap_v3', editor.value);
+    alert('✅ 已保存到本地浏览器缓存');
+}
+
+// 8. 功能：导出 HTML
+function exportHTML() {
+    const currentContent = editor.value;
+    // 获取当前页面的 HTML 结构
+    let html = document.documentElement.outerHTML;
+    
+    // 我们需要替换掉 textarea 里的内容为当前最新内容
+    // 为了安全，使用简单的字符串替换，或者重构 DOM
+    // 这里使用一个简单的技巧：将当前的 DEFAULT_MARKDOWN 变量替换掉
+    // 更好的方式是直接构造一个新的简单 HTML 文件，只包含查看器
+    
+    const exportContent = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>农场主 v3.0 导图导出</title>
+<style>
+body,html{margin:0;height:100%;background:#263238;color:#fff;overflow:hidden;}
+svg{width:100%;height:100%;}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/d3@7"><\/script>
+<script src="https://cdn.jsdelivr.net/npm/markmap-view@0.15.4"><\/script>
+<script src="https://cdn.jsdelivr.net/npm/markmap-lib@0.15.4/dist/browser/index.min.js"><\/script>
+</head>
+<body>
+<svg id="mindmap"></svg>
+<script>
+const markdown = \`${currentContent.replace(/`/g, '\\`').replace(/\${/g, '\\${')}\`;
+const { Transformer } = window.markmap;
+const { Markmap } = window.markmap;
+const transformer = new Transformer();
+const { root } = transformer.transform(markdown);
+Markmap.create('#mindmap', { autoFit: true, style: id => ({color:'#ccc'}) }, root);
+<\/script>
+</body>
+</html>`;
+
+    const blob = new Blob([exportContent], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'Agricola_Mindmap.html';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+// 启动
+init();
+
+</script>
+</body>
+</html>
