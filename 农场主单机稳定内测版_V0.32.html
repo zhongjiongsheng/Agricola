@@ -1,0 +1,2219 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>农场主 v4.7 - 完美逻辑修正版</title>
+    <style>
+        :root {
+            --bg-color: #263238;
+            --board-bg: #3e2723;
+            --wood-color: #795548;
+            --clay-color: #ef9a9a;
+            --stone-color: #9e9e9e;
+            --fence-color: #5d4037;
+            --log-bg: #111;
+            /* 优化点：定义朱红色 */
+            --vermilion-color: #e64a19; 
+        }
+
+        body {
+            font-family: 'Segoe UI', "Microsoft YaHei", sans-serif;
+            background-color: var(--bg-color);
+            color: white;
+            margin: 0; padding: 10px;
+            display: flex; flex-direction: column; align-items: center;
+            user-select: none;
+            overflow-x: hidden;
+        }
+
+        /* --- 顶部 --- */
+        .top-bar {
+            width: 100%; max-width: 1400px; display: flex; justify-content: space-between; align-items: center;
+            background: rgba(0,0,0,0.4); padding: 10px; border-radius: 8px; margin-bottom: 10px;
+        }
+        .badge { padding: 5px 15px; border-radius: 15px; background: #444; font-weight: bold; box-shadow: 0 2px 5px rgba(0,0,0,0.3); }
+        
+        /* --- 布局 --- */
+        .layout { display: flex; gap: 15px; max-width: 1500px; flex-wrap: wrap; justify-content: center; }
+
+        .board {
+            width: 440px; display: flex; flex-direction: column; gap: 6px;
+            background: var(--board-bg); padding: 10px; border-radius: 8px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        }
+        .section-title { font-size: 12px; color: #d7ccc8; border-bottom: 1px solid #5d4037; margin-top: 8px; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 1px; }
+        
+        .action-slot {
+            background: #d7ccc8; color: #333; padding: 8px; border-radius: 4px;
+            cursor: pointer; position: relative; min-height: 42px;
+            display: flex; flex-direction: column; justify-content: center;
+            border: 2px solid #8d6e63; transition: 0.1s; font-size: 13px;
+            box-shadow: inset 0 0 5px rgba(0,0,0,0.05);
+        }
+        .action-slot:hover:not(.disabled) { background: #fff; border-color: #ffca28; transform: translateY(-1px); }
+        .action-slot:active:not(.disabled) { transform: translateY(1px); }
+        .action-slot.disabled { 
+            background: #616161; color: #999; cursor: not-allowed; border-color: #444; 
+            opacity: 0.8; box-shadow: none;
+        }
+        .acc-badge { 
+            position: absolute; top: -6px; right: -6px; background: #d32f2f; color: white; 
+            font-size: 10px; padding: 2px 6px; border-radius: 8px; z-index: 2;
+            border: 1px solid white;
+        }
+
+        .players-area { flex: 1; display: flex; flex-direction: column; gap: 10px; min-width: 500px; }
+        .player-panel {
+            background: #455a64; padding: 10px; border-radius: 6px;
+            border-left: 6px solid #ccc; transition: 0.2s; position: relative;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+        .player-panel.active { background: #546e7a; border-color: white; box-shadow: 0 0 15px rgba(0,0,0,0.5); transform: scale(1.01); z-index: 10; }
+        
+        .farm-wrapper {
+            display: inline-block;
+            background: #2e7d32;
+            padding: 5px; border-radius: 4px;
+            border: 2px solid #1b5e20;
+        }
+        .farm-grid {
+            display: grid; 
+            grid-template-columns: repeat(5, 55px); 
+            grid-template-rows: repeat(3, 55px);
+            gap: 4px; 
+            background: #2e7d32;
+            padding: 4px;
+        }
+        .tile {
+            position: relative;
+            width: 55px; height: 55px;
+            background: #81c784; 
+            border-radius: 2px;
+            cursor: default;
+        }
+        
+        .tile[class*="house-"]::before {
+            content: ''; position: absolute; top: 4px; left: 4px;
+            width: 12px; height: 12px; background: #81d4fa;
+            border: 1px solid rgba(0,0,0,0.3); box-shadow: 1px 1px 2px rgba(0,0,0,0.3); z-index: 1;
+        }
+        .tile[class*="house-"]::after {
+            content: ''; position: absolute; bottom: 4px; right: 4px;
+            width: 20px; height: 14px; background: rgba(255,255,255,0.4);
+            border-radius: 2px; border: 1px solid rgba(0,0,0,0.2); z-index: 1;
+        }
+        .tile.house-wood { background: var(--wood-color); border: 2px solid #4e342e; }
+        .tile.house-clay { background: var(--clay-color); border: 2px solid #b71c1c; }
+        .tile.house-stone { background: var(--stone-color); border: 2px solid #424242; }
+        
+        .tile.ghost-room { background: rgba(255, 255, 255, 0.5) !important; border: 2px dashed #fff !important; }
+        .tile.ghost-stable::after { content: '🏚️'; position: absolute; top: 2px; right: 2px; opacity: 0.6; font-size: 14px; }
+        .tile.ghost-sow::after { content: '🌱'; position: absolute; bottom: 2px; right: 2px; opacity: 0.8; font-size: 20px; z-index:10; text-shadow: 0 0 5px yellow; }
+
+        .tile.field { 
+            background: repeating-linear-gradient(-45deg, #5d4037, #5d4037 5px, #4e342e 5px, #4e342e 10px);
+            border: 1px solid #3e2723; box-shadow: inset 0 0 5px rgba(0,0,0,0.5);
+        }
+        .stable-icon { position: absolute; top: 2px; right: 2px; font-size: 14px; z-index: 3; text-shadow: 0 1px 2px black; }
+        
+        .fence { position: absolute; background: var(--fence-color); z-index: 20; pointer-events: none; box-shadow: 1px 1px 2px rgba(0,0,0,0.8); border-radius: 2px; }
+        .fence.v { width: 8px; height: 115%; top: -7.5%; left: -4px; } 
+        .fence.h { height: 8px; width: 115%; left: -7.5%; top: -4px; } 
+        .fence-slot { position: absolute; background: rgba(255,255,255,0); z-index: 30; transition:0.1s; }
+        .tile.edit-fence .fence-slot { cursor: pointer; background: rgba(255,255,255,0.15); }
+        .tile.edit-fence .fence-slot:hover { background: rgba(255,215,0, 0.8); }
+        .fs-top { top: -6px; left: 0; right: 0; height: 12px; }
+        .fs-btm { bottom: -6px; left: 0; right: 0; height: 12px; }
+        .fs-lft { left: -6px; top: 0; bottom: 0; width: 12px; }
+        .fs-rgt { right: -6px; top: 0; bottom: 0; width: 12px; }
+
+        .scatter-item { position: absolute; font-size: 14px; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.6)); z-index: 5; transition: 0.3s; pointer-events: none; }
+        .scatter-count { position: absolute; bottom:0; right:0; background:rgba(0,0,0,0.6); color:white; font-size:9px; padding:0 3px; border-radius:4px; z-index: 6; pointer-events: none; }
+
+        .res-row { display: flex; flex-wrap: wrap; gap: 8px; font-size: 12px; margin: 5px 0; color: #eceff1; }
+        .res-row span b { color: #fff; font-size: 1.1em; margin-left:2px;}
+
+        /* 卡牌迷你框 */
+        .mini-card-container { display: flex; gap: 4px; margin-top: 5px; flex-wrap: wrap; }
+        .mini-card {
+            width: 24px; height: 32px; background: #ffca28; color: #333;
+            border: 1px solid #ffd700; border-radius: 2px; font-size: 10px;
+            display: flex; align-items: center; justify-content: center; cursor: pointer;
+            overflow: hidden; white-space: nowrap; font-weight: bold;
+            transition: 0.2s;
+        }
+        .mini-card:hover { transform: scale(1.2); z-index:10; box-shadow: 0 2px 5px rgba(0,0,0,0.5); }
+        
+        /* 优化点：主要发展卡小图标朱红色 */
+        .mini-card.major {
+            background: var(--vermilion-color);
+            color: white;
+            border-color: #b71c1c;
+        }
+
+        /* UI 组件 */
+        .modal-overlay { display: none; position: fixed; bottom: 0; left: 0; right: 0; top: 0; background: rgba(0,0,0,0.85); z-index: 100; align-items: center; justify-content: center; }
+        .modal-blocker { display: none; position: fixed; top:0; left:0; width:100%; height:100%; z-index: 400; cursor: wait; }
+        .modal-content { background: #37474f; padding: 20px; border-radius: 10px; width: 90%; max-width: 600px; max-height: 85vh; overflow-y: auto; text-align: center; color: white; box-shadow: 0 10px 25px rgba(0,0,0,0.8); border: 1px solid #546e7a; }
+        
+        .score-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
+        .score-table th, .score-table td { border: 1px solid #555; padding: 8px; text-align: center; }
+        .score-table th { background: #263238; color: #ffd700; }
+        .score-total { font-weight: bold; color: #ffd700; font-size: 1.3em; }
+
+        #confirm-bar { display: none; position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #212121; padding: 15px 25px; border-radius: 30px; box-shadow: 0 5px 15px rgba(0,0,0,0.5); z-index: 500; display: flex; gap: 15px; align-items: center; border: 1px solid #444; }
+        #timer-fill { position: absolute; bottom: 0; left: 0; height: 4px; background: #4caf50; width: 100%; transition: width 1s linear; border-radius: 0 0 30px 30px; }
+
+        #log { width: 100%; max-width: 1400px; height: 140px; background: var(--log-bg); color: #b0bec5; font-family: "Consolas", monospace; padding: 10px; margin-top: 10px; overflow-y: auto; border-radius: 4px; font-size: 13px; line-height: 1.4; border: 1px solid #333; box-shadow: inset 0 0 10px rgba(0,0,0,0.5); }
+        .log-entry { margin-bottom: 4px; border-bottom: 1px solid #333; padding-bottom: 2px; animation: fadeIn 0.3s; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: translateX(0); } }
+        
+        .log-badge { padding: 1px 4px; border-radius: 3px; font-size: 0.9em; margin: 0 2px; color: #000; font-weight: bold; }
+        .lb-wood { background: #a1887f; } .lb-clay { background: #ef9a9a; } .lb-reed { background: #eeeeee; } .lb-stone { background: #bdbdbd; } .lb-food { background: #ffcc80; }
+        .lb-grain { background: #fff176; } .lb-veg { background: #ffab91; } .lb-sheep { background: #80deea; } .lb-boar { background: #bcaaa4; } .lb-cow { background: #a5d6a7; }
+
+        #toast { position: fixed; top: 15%; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.9); color: white; padding: 15px 30px; font-size: 16px; border-radius: 30px; pointer-events: none; opacity: 0; transition: 0.3s; z-index: 600; box-shadow: 0 5px 15px rgba(0,0,0,0.5); border: 1px solid #555; }
+        .float-text { position: fixed; font-weight: bold; font-size: 20px; pointer-events: none; text-shadow: 0 0 3px black; z-index: 9999; transition: all 1s ease-out; }
+
+        .btn { padding: 6px 14px; border:none; border-radius:4px; cursor:pointer; margin:2px; font-weight: bold; transition: 0.2s; }
+        .btn:hover { filter: brightness(1.1); transform: scale(1.05); }
+        .btn-green { background:#43a047; color:white; } .btn-red { background:#ef5350; color:white; } .btn-blue { background:#1e88e5; color:white; } .btn-wood { background:#795548; color:white; } .btn-outline { background: transparent; border: 1px solid #ccc; color: white; }
+        
+        /* 优化点：主要发展卡样式改为朱红色 */
+        .major-card { 
+            border: 1px solid #b71c1c; 
+            padding: 5px; margin: 5px; display: inline-block; width: 130px; 
+            background: var(--vermilion-color); 
+            border-radius: 4px; vertical-align: top; font-size: 11px; 
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3); transition: 0.2s; 
+        }
+        .major-card:hover { transform: translateY(-2px); box-shadow: 0 5px 10px rgba(0,0,0,0.5); border-color: #ffca28; }
+
+        /* 工具栏样式优化 */
+        .bottom-toolbar { position: fixed; bottom: 5%; left: 50%; transform: translate(-50%); background: #37474f; padding: 15px; border-radius: 8px; display: flex; gap: 10px; z-index: 900; box-shadow: 0 5px 20px rgba(0,0,0,0.8); border: 1px solid #78909c; flex-wrap: wrap; justify-content: center; max-width: 90%; }
+
+        /* 喂养策略窗口 */
+        .harvest-modal {
+            display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 600px; max-width: 95%; background: #263238; border: 2px solid #78909c;
+            border-radius: 10px; padding: 20px; z-index: 3000;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.9);
+        }
+        .harvest-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px solid #555; padding-bottom: 10px; }
+        .harvest-header h3 { margin: 0; color: #ffca28; }
+        .close-btn { background: transparent; border: none; color: #aaa; font-size: 20px; cursor: pointer; }
+        .close-btn:hover { color: white; }
+        
+        /* 悬浮按钮 */
+        #harvest-toggle-btn {
+            display: none; position: fixed; bottom: 20px; right: 20px; 
+            background: #ff9800; color: white; padding: 15px 20px; border-radius: 30px;
+            font-weight: bold; cursor: pointer; z-index: 2000; box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+            animation: pulse 2s infinite; border: 2px solid white;
+        }
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
+    </style>
+</head>
+<body>
+
+    <div class="top-bar">
+        <div class="badge" id="round-info">第 1 轮</div>
+        <div class="badge" id="turn-info">等待开始...</div>
+    </div>
+
+    <div class="layout">
+        <div class="board">
+            <div class="section-title">公共资源 / 行动</div>
+            <div id="base-actions" style="display:grid; grid-template-columns:1fr 1fr; gap:6px;"></div>
+            <div class="section-title">回合解锁行动</div>
+            <div id="round-actions" style="display:grid; grid-template-columns:1fr 1fr; gap:6px;"></div>
+            <div class="section-title">发展卡市场 (仅展示)</div>
+            <div id="major-market" style="display:grid; grid-template-columns:repeat(2, 1fr); gap:5px;"></div>
+        </div>
+        <div class="players-area" id="players-container"></div>
+    </div>
+
+    <div id="modal-blocker" class="modal-blocker"></div>
+    <div id="confirm-bar">
+        <div id="confirm-text" style="color:white; font-weight:bold">确认派遣?</div>
+        <button class="btn btn-green" onclick="userConfirmAction()">确认 (<span id="timer-sec">15</span>s)</button>
+        <button class="btn btn-red" onclick="userUndoAction()">撤回行动</button>
+        <div id="timer-fill"></div>
+    </div>
+
+    <div class="modal-overlay" id="modal">
+        <div class="modal-content">
+            <h3 id="modal-title">标题</h3>
+            <div id="modal-body"></div>
+            <div id="modal-footer" style="margin-top:15px;">
+                <button class="btn btn-blue" onclick="closeModal()">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <button id="harvest-toggle-btn" onclick="openHarvestModal()">🍖 喂养 (点击展开)</button>
+
+    <div id="harvest-modal" class="harvest-modal">
+        <div class="harvest-header">
+            <h3>🍲 喂养阶段：资源转化</h3>
+            <button class="close-btn" onclick="minimizeHarvestModal()">✖</button>
+        </div>
+        <div id="harvest-content"></div>
+    </div>
+
+    <div id="toast">提示</div>
+    <div id="log"></div>
+
+    <script>
+    // ================= 数据 & 配置 =================
+    
+    const LIMIT_FENCES = 15;
+    const LIMIT_STABLES = 4;
+    const MAX_ROUNDS = 14;
+    const HARVEST_ROUNDS = [4, 7, 9, 11, 13, 14];
+    
+    const SCORING_TIERS = {
+        fields:  [-1, -1, 1, 2, 3, 4], 
+        pastures:[-1, 1, 2, 3, 4],     
+        grain:   [-1, 1, 1, 1, 2, 2, 3, 3, 4], 
+        veg:     [-1, 1, 2, 3, 4],     
+        sheep:   [-1, 1, 1, 1, 2, 2, 3, 3, 4], 
+        boar:    [-1, 1, 1, 2, 2, 3, 3, 4],    
+        cow:     [-1, 1, 2, 3, 4]      
+    };
+
+    const DB_MAJORS = [
+        { id: 'm1', name: '🔥火炉(2砖)', cost: {clay:2}, score:1, type:'cook', desc:'烤面包(2食), 变食:羊2/猪2/牛3/菜2', bakeRate:2, cook:{sheep:2, boar:2, cow:3, veg:2} },
+        { id: 'm2', name: '🔥火炉(3砖)', cost: {clay:3}, score:1, type:'cook', desc:'同上', bakeRate:2, cook:{sheep:2, boar:2, cow:3, veg:2} },
+        { id: 'm3', name: '🍲壁炉(4砖)', cost: {clay:4}, score:1, type:'cook', desc:'烤面包(3食), 变食:羊2/猪3/牛4/菜3', bakeRate:3, cook:{sheep:2, boar:3, cow:4, veg:3} },
+        { id: 'm4', name: '🍲壁炉(5砖)', cost: {clay:5}, score:1, type:'cook', desc:'同上', bakeRate:3, cook:{sheep:2, boar:3, cow:4, veg:3} },
+        { id: 'm5', name: '💧水井', cost: {stone:3,wood:1}, score:4, desc:'未来每轮+1食物', special:'well' },
+        { id: 'm6', name: '🧺芦苇工坊', cost: {reed:2,stone:2}, score:2, desc:'芦苇换食/分 (结束时每2芦苇+1分)', special:'bonus', bonusType: 'reed', convert:{reed:1, food:2} }, 
+        { id: 'm7', name: '🪑木头工坊', cost: {wood:2,stone:2}, score:2, desc:'木头换食/分 (结束时每2木+1分)', special:'bonus', bonusType: 'wood', convert:{wood:1, food:2} },
+        { id: 'm8', name: '🧱砖头工坊', cost: {clay:2,stone:2}, score:2, desc:'砖头换食/分 (结束时每2砖+1分)', special:'bonus', bonusType: 'clay', convert:{clay:1, food:2} },
+        { id: 'm9', name: '🪨石造烤炉', cost: {stone:3,clay:1}, score:3, desc:'高效烤面包(2麦->8食)', type:'bake', specialBake:{in:2, out:8} },
+        { id: 'm10', name: '🏺砖造烤炉', cost: {clay:3,stone:1}, score:2, desc:'高效烤面包(1麦->5食)', type:'bake', specialBake:{in:1, out:5} }
+    ];
+
+    const BASE_ACTIONS = [
+        { id:'act_forest_3', name:'🌲 森林 (3木)', acc:3, cur:3, type:'res', res:'wood' },
+        { id:'act_forest_2', name:'🌳 树林 (2木)', acc:2, cur:2, type:'res', res:'wood' },
+        { id:'act_forest_1', name:'🌱 林地 (1木)', acc:1, cur:1, type:'res', res:'wood' },
+        { id:'act_clay_pit', name:'🧱 粘土坑 (1砖)', acc:1, cur:1, type:'res', res:'clay' },
+        { id:'act_hollow', name:'🧱 泥坑 (2砖)', acc:2, cur:2, type:'res', res:'clay' },
+        { id:'act_reed1', name:'🎋 芦苇岸 (1苇)', acc:1, cur:1, type:'res', res:'reed' },
+        { id:'act_fish', name:'🐟 钓鱼 (1食)', acc:1, cur:1, type:'res', res:'food' },
+        { id:'act_travel', name:'🎭 卖艺 (1食)', acc:1, cur:1, type:'res', res:'food' },
+        { id:'act_labor', name:'👷 临时工 (2食)', type:'res', res:'food', amount:2 },
+        { id:'act_grain', name:'🌾 小麦种子', type:'res', res:'grain', amount:1 },
+        { id:'act_meeting', name:'👥 聚会场所', type:'special', mode:'meeting', desc:'成为下轮起始玩家' },
+        { id:'act_market', name:'🛒 资源市场', type:'res_combo', desc:'1苇+1石+1食' },
+        { id:'act_plow', name:'🚜 犁地', type:'special', mode:'plow' },
+        { id:'act_build', name:'🏠 建房/马厩', type:'special', mode:'build_menu', desc:'自由建造房间/马厩' }
+    ];
+    
+    const ROUND_CARDS_POOL = [
+        { id:'r_sheep', name:'🐑 牧羊 (1羊)', acc:1, cur:1, type:'res', res:'sheep', stage:1 },
+        { id:'r_sow', name:'🌱 播种', type:'special', mode:'sow', stage:1 },
+        { id:'r_fences', name:'🚧 栅栏', type:'special', mode:'fence', stage:1 },
+        { id:'r_major', name:'🏗️ 发展卡', type:'special', mode:'major', stage:1 },
+        { id:'r_stone', name:'🪨 西部采石 (1石)', acc:1, cur:1, type:'res', res:'stone', stage:2 },
+        { id:'r_reno', name:'🔨 翻修+发展卡', type:'special', mode:'reno_major', stage:2 },
+        { id:'r_grow', name:'👶 生儿育女', type:'special', mode:'grow', stage:2, desc:'需空房 > 人口' },
+        { id:'r_boar', name:'🐗 野猪 (1猪)', acc:1, cur:1, type:'res', res:'boar', stage:3 },
+        { id:'r_veg', name:'🥕 蔬菜', type:'res', res:'veg', amount:1, stage:3 },
+        { id:'r_cow', name:'🐮 牛 (1牛)', acc:1, cur:1, type:'res', res:'cow', stage:4 },
+        { id:'r_stone2', name:'🪨 东部采石 (1石)', acc:1, cur:1, type:'res', res:'stone', stage:4 },
+        { id:'r_plow_sow', name:'🚜 犁地+播种', type:'special', mode:'plow_sow', stage:5 },
+        { id:'r_grow2', name:'👶 急于求成', type:'special', mode:'grow_force', stage:5 },
+        { id:'r_reno_fence', name:'🔨 翻修+栅栏', type:'special', mode:'reno_fence', stage:6 }
+    ];
+
+    let gameState = {
+        round: 1,
+        startPlayer: 0, 
+        nextStartPlayer: 0, 
+        turnIdx: 0,
+        occupied: {}, 
+        roundCards: [], 
+        deck: [], 
+        majors: [...DB_MAJORS],
+        harvestPhase: false,
+        harvestState: null, 
+        pendingAction: null,
+        overflowQueue: [] 
+    };
+
+    let PLAYERS = Array.from({length:4}, (_, i) => ({
+        id: i,
+        name: i===0 ? "你 (蓝)" : `AI ${['红','绿','黄'][i-1]}`,
+        color: i===0 ? '#29b6f6' : ['#ef5350','#66bb6a','#ffee58'][i-1],
+        type: i===0 ? 'human' : 'ai',
+        res: { wood:0, clay:0, reed:0, stone:0, food: (i===0?2:3), grain:0, veg:0, sheep:0, boar:0, cow:0, workers:2, maxWorkers:2 },
+        farm: Array(15).fill(0), 
+        farmCounts: Array(15).fill(0), 
+        farmContent: Array(15).fill(null), 
+        fences: new Set(), 
+        stablesCount: 0, 
+        houseType: 'wood', 
+        majors: [],
+        begging: 0,
+        animals: { sheep:0, boar:0, cow:0 }, 
+        tempMode: null,
+        harvestTemp: null
+    }));
+    
+    PLAYERS.forEach(p => { p.farm[5]=1; p.farm[10]=1; });
+
+    // ================= 初始化 =================
+
+    function init() {
+        gameState.deck = setupDeck();
+        gameState.startPlayer = Math.floor(Math.random() * 4);
+        gameState.nextStartPlayer = gameState.startPlayer;
+        unlockNextRoundCard();
+        render();
+        logRich("🎮 游戏开始！祝你丰收！", "white");
+        nextTurn();
+    }
+
+    function setupDeck() {
+        const stages = {1:[], 2:[], 3:[], 4:[], 5:[], 6:[]};
+        ROUND_CARDS_POOL.forEach(c => stages[c.stage].push(c));
+        let deck = [];
+        for(let i=1; i<=6; i++) {
+            if(stages[i].length > 0) deck = deck.concat(stages[i].sort(() => Math.random() - 0.5));
+        }
+        return deck;
+    }
+
+    function unlockNextRoundCard() {
+        if(gameState.deck.length > 0) {
+            gameState.roundCards.push(gameState.deck.shift());
+            const newCard = gameState.roundCards[gameState.roundCards.length-1];
+            logRich(`🆕 第 ${gameState.round} 轮: [${newCard.name}] 解锁`, 'white');
+        }
+    }
+
+    // ================= 游戏循环 =================
+
+    function nextTurn() {
+        if (gameState.harvestPhase) return;
+
+        const allWorkersUsed = PLAYERS.every(p => p.res.workers <= 0);
+        if (allWorkersUsed) {
+            endRound();
+            return;
+        }
+
+        let pIdx = (gameState.startPlayer + gameState.turnIdx) % 4;
+        let p = PLAYERS[pIdx];
+        let loopGuard = 0;
+
+        while (p.res.workers <= 0) {
+            gameState.turnIdx++;
+            pIdx = (gameState.startPlayer + gameState.turnIdx) % 4;
+            p = PLAYERS[pIdx];
+            loopGuard++;
+            if(loopGuard > 10) { endRound(); return; }
+        }
+
+        document.querySelectorAll('.player-panel').forEach(e => e.classList.remove('active'));
+        document.getElementById(`p-${pIdx}`).classList.add('active');
+        document.getElementById('turn-info').innerText = `轮到: ${p.name}`;
+        document.getElementById('turn-info').style.color = p.color;
+
+        if (p.type === 'ai') {
+            setTimeout(() => aiPlay(p), 800);
+        } else {
+            toast("请选择行动");
+        }
+    }
+
+    function endRound() {
+        logRich(`=== 第 ${gameState.round} 轮结束 ===`, '#fff');
+        
+        gameState.occupied = {};
+        PLAYERS.forEach(p => {
+            p.res.workers = p.res.maxWorkers;
+            if(p.majors.some(m=>m.special==='well')) { p.res.food++; }
+        });
+
+        [...BASE_ACTIONS, ...gameState.roundCards].forEach(act => {
+            if (act.acc) act.cur += act.acc; 
+        });
+
+        if (HARVEST_ROUNDS.includes(gameState.round)) {
+            performHarvest();
+        } else {
+            advanceRound();
+        }
+    }
+
+    function advanceRound() {
+        if (gameState.round >= MAX_ROUNDS) { endGame(); return; }
+        gameState.round++;
+        unlockNextRoundCard();
+        gameState.startPlayer = gameState.nextStartPlayer; 
+        gameState.turnIdx = 0;
+        render();
+        logRich(`>>> 第 ${gameState.round} 轮开始`, '#4fc3f7');
+        setTimeout(() => nextTurn(), 1000);
+    }
+
+    // ================= 收获阶段 =================
+
+    function performHarvest() {
+        logRich(`🌾 --- 收获阶段 ---`, '#ff9800');
+        gameState.harvestPhase = true;
+        
+        // 1. 田地收获 (自动)
+        PLAYERS.forEach(p => {
+            for(let i=0; i<15; i++) {
+                if(p.farm[i]===2 && p.farmCounts[i] > 0) {
+                    const type = p.farmContent[i];
+                    p.res[type]++; p.farmCounts[i]--;
+                    if(p.farmCounts[i] === 0) p.farmContent[i] = null;
+                }
+            }
+        });
+        logRich(`作物收获完毕，进入喂养阶段`, '#aaa');
+
+        gameState.harvestState = {
+            queue: Array.from({length:4}, (_, i) => (gameState.startPlayer + i) % 4),
+            currentIdx: 0
+        };
+        
+        processHarvestTurn();
+    }
+
+    function processHarvestTurn() {
+        const state = gameState.harvestState;
+        if (state.currentIdx >= state.queue.length) {
+            finishHarvestPhase();
+            return;
+        }
+
+        const pIdx = state.queue[state.currentIdx];
+        const p = PLAYERS[pIdx];
+        
+        document.querySelectorAll('.player-panel').forEach(e => e.classList.remove('active'));
+        document.getElementById(`p-${pIdx}`).classList.add('active');
+        document.getElementById('turn-info').innerText = `喂养: ${p.name}`;
+
+        if (p.type === 'human') {
+            startHarvestFeed(p);
+        } else {
+            aiHarvestFeed(p);
+        }
+    }
+
+    function startHarvestFeed(p) {
+        p.harvestTemp = {
+            grainToFood: 0, vegToFood: 0,
+            sheepToFood: 0, boarToFood: 0, cowToFood: 0,
+            woodToFood: 0, clayToFood: 0, reedToFood: 0
+        };
+        
+        // 强制清除遮罩，防止卡死
+        document.getElementById('modal-blocker').style.display = 'none';
+        document.getElementById('confirm-bar').style.display = 'none';
+        
+        openHarvestModal(); 
+    }
+
+    function openHarvestModal() {
+        document.getElementById('harvest-modal').style.display = 'block';
+        document.getElementById('harvest-toggle-btn').style.display = 'none';
+        updateHarvestUI(PLAYERS[0]); 
+    }
+
+    function minimizeHarvestModal() {
+        document.getElementById('harvest-modal').style.display = 'none';
+        document.getElementById('harvest-toggle-btn').style.display = 'block';
+    }
+
+    function updateHarvestUI(p) {
+        const div = document.getElementById('harvest-content');
+        if (!div) return;
+
+        const need = p.res.maxWorkers * 2;
+        let convertedFood = 0;
+        convertedFood += p.harvestTemp.grainToFood;
+        convertedFood += p.harvestTemp.vegToFood;
+        
+        const cooker = p.majors.find(m => (m.type==='cook'||m.type==='bake') && m.cook);
+        if (cooker) {
+            convertedFood += p.harvestTemp.sheepToFood * cooker.cook.sheep;
+            convertedFood += p.harvestTemp.boarToFood * cooker.cook.boar;
+            convertedFood += p.harvestTemp.cowToFood * cooker.cook.cow;
+            if (p.harvestTemp.vegToFood > 0) convertedFood += p.harvestTemp.vegToFood * (cooker.cook.veg - 1); 
+        }
+
+        const woodShop = p.majors.find(m => m.bonusType==='wood' && m.convert);
+        if(woodShop) convertedFood += p.harvestTemp.woodToFood * woodShop.convert.food;
+        const clayShop = p.majors.find(m => m.bonusType==='clay' && m.convert);
+        if(clayShop) convertedFood += p.harvestTemp.clayToFood * clayShop.convert.food;
+        const reedShop = p.majors.find(m => m.bonusType==='reed' && m.convert);
+        if(reedShop) convertedFood += p.harvestTemp.reedToFood * reedShop.convert.food;
+
+        const totalFood = p.res.food + convertedFood;
+        const balance = totalFood - need;
+        const balanceColor = balance >= 0 ? '#4caf50' : '#ef5350';
+
+        let html = `<div style="color:white; margin-bottom:15px; text-align:center; font-size:1.1em;">
+            需要: ${need} | 当前: <span style="color:${balanceColor}">${totalFood}</span> | 
+            乞讨预测: ${balance < 0 ? Math.abs(balance) : 0}
+        </div><div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:center;">`;
+
+        html += `<button class="btn" onclick="modHarvest('grainToFood', 1, ${p.res.grain})">🌾麦->食 (${p.harvestTemp.grainToFood}/${p.res.grain})</button>`;
+        html += `<button class="btn" onclick="modHarvest('vegToFood', 1, ${p.res.veg})">🥕菜->食 (${p.harvestTemp.vegToFood}/${p.res.veg})</button>`;
+
+        if (cooker) {
+            html += `<button class="btn btn-blue" onclick="modHarvest('sheepToFood', 1, ${p.animals.sheep})">🐑->${cooker.cook.sheep}食 (${p.harvestTemp.sheepToFood}/${p.animals.sheep})</button>`;
+            html += `<button class="btn btn-blue" onclick="modHarvest('boarToFood', 1, ${p.animals.boar})">🐗->${cooker.cook.boar}食 (${p.harvestTemp.boarToFood}/${p.animals.boar})</button>`;
+            html += `<button class="btn btn-blue" onclick="modHarvest('cowToFood', 1, ${p.animals.cow})">🐮->${cooker.cook.cow}食 (${p.harvestTemp.cowToFood}/${p.animals.cow})</button>`;
+        }
+
+        if (woodShop) html += `<button class="btn btn-wood" onclick="modHarvest('woodToFood', 1, ${p.res.wood})">🪵->${woodShop.convert.food}食 (${p.harvestTemp.woodToFood}/${p.res.wood})</button>`;
+        if (clayShop) html += `<button class="btn btn-wood" style="background:#ef9a9a;color:#333" onclick="modHarvest('clayToFood', 1, ${p.res.clay})">🧱->${clayShop.convert.food}食 (${p.harvestTemp.clayToFood}/${p.res.clay})</button>`;
+        if (reedShop) html += `<button class="btn btn-wood" style="background:#eee;color:#333" onclick="modHarvest('reedToFood', 1, ${p.res.reed})">🎋->${reedShop.convert.food}食 (${p.harvestTemp.reedToFood}/${p.res.reed})</button>`;
+
+        html += `</div><div style="display:flex; gap:15px; margin-top:20px; justify-content:center;">
+            <button class="btn btn-red" onclick="resetHarvest()">重置方案</button>
+            <button class="btn btn-green" style="padding:8px 20px; font-size:1.1em;" onclick="commitHarvest()">确认喂养</button>
+        </div>`;
+
+        div.innerHTML = html;
+    }
+
+    window.modHarvest = function(key, delta, max) {
+        const p = PLAYERS[gameState.harvestState.queue[gameState.harvestState.currentIdx]];
+        let current = p.harvestTemp[key];
+        if (current + delta >= 0 && current + delta <= max) {
+            p.harvestTemp[key] += delta;
+            updateHarvestUI(p);
+        }
+    }
+
+    window.resetHarvest = function() {
+        const p = PLAYERS[gameState.harvestState.queue[gameState.harvestState.currentIdx]];
+        for(let k in p.harvestTemp) p.harvestTemp[k] = 0;
+        updateHarvestUI(p);
+    }
+
+    window.commitHarvest = function() {
+        const p = PLAYERS[gameState.harvestState.queue[gameState.harvestState.currentIdx]];
+        const t = p.harvestTemp;
+        
+        // 扣除资源
+        p.res.grain -= t.grainToFood; p.res.veg -= t.vegToFood;
+        p.animals.sheep -= t.sheepToFood; p.animals.boar -= t.boarToFood; p.animals.cow -= t.cowToFood;
+        p.res.wood -= t.woodToFood; p.res.clay -= t.clayToFood; p.res.reed -= t.reedToFood;
+
+        // 增加食物
+        let gain = t.grainToFood + t.vegToFood;
+        const cooker = p.majors.find(m => (m.type==='cook'||m.type==='bake') && m.cook);
+        if (cooker) {
+            gain += t.sheepToFood * cooker.cook.sheep;
+            gain += t.boarToFood * cooker.cook.boar;
+            gain += t.cowToFood * cooker.cook.cow;
+            if (t.vegToFood > 0) gain += t.vegToFood * (cooker.cook.veg - 1);
+        }
+        const woodShop = p.majors.find(m => m.bonusType==='wood' && m.convert);
+        if(woodShop) gain += t.woodToFood * woodShop.convert.food;
+        const clayShop = p.majors.find(m => m.bonusType==='clay' && m.convert);
+        if(clayShop) gain += t.clayToFood * clayShop.convert.food;
+        const reedShop = p.majors.find(m => m.bonusType==='reed' && m.convert);
+        if(reedShop) gain += t.reedToFood * reedShop.convert.food;
+
+        p.res.food += gain;
+
+        // 结算喂养
+        const need = p.res.maxWorkers * 2;
+        const pay = Math.min(p.res.food, need);
+        p.res.food -= pay;
+        const begging = need - pay;
+        if (begging > 0) {
+            p.begging += begging;
+            logRich(`${p.name} 获得 ${begging} 张乞讨卡`, 'red');
+        }
+
+        logRich(`${p.name} 完成喂养 (转化获得 ${gain} 食物)`, p.color);
+        
+        document.getElementById('harvest-modal').style.display = 'none';
+        document.getElementById('harvest-toggle-btn').style.display = 'none';
+        p.harvestTemp = null;
+        
+        gameState.harvestState.currentIdx++;
+        processHarvestTurn();
+    }
+
+    function aiHarvestFeed(p) {
+        const need = p.res.maxWorkers * 2;
+        let current = p.res.food;
+        let deficit = need - current;
+
+        if (deficit > 0) {
+            if (p.res.grain > 0) { let take = Math.min(p.res.grain, deficit); p.res.grain-=take; p.res.food+=take; deficit-=take; }
+            if (deficit > 0 && p.res.veg > 0) { let take = Math.min(p.res.veg, deficit); p.res.veg-=take; p.res.food+=take; deficit-=take; }
+            
+            const cooker = p.majors.find(m => (m.type==='cook'||m.type==='bake') && m.cook);
+            if (deficit > 0 && cooker) {
+                ['sheep','boar','cow'].forEach(type => {
+                    if (deficit <= 0) return;
+                    let count = p.animals[type];
+                    if (count > 2) { // 保留种
+                        let kill = Math.min(count - 2, Math.ceil(deficit / cooker.cook[type]));
+                        p.animals[type] -= kill;
+                        p.res.food += kill * cooker.cook[type];
+                        deficit -= kill * cooker.cook[type];
+                    }
+                });
+                if (deficit > 0) { // 还是饿，全杀
+                     ['sheep','boar','cow'].forEach(type => {
+                        if (deficit <= 0) return;
+                        let count = p.animals[type];
+                        if (count > 0) {
+                            let kill = Math.min(count, Math.ceil(deficit / cooker.cook[type]));
+                            p.animals[type] -= kill;
+                            p.res.food += kill * cooker.cook[type];
+                            deficit -= kill * cooker.cook[type];
+                        }
+                    });
+                }
+            }
+        }
+
+        const pay = Math.min(p.res.food, need);
+        p.res.food -= pay;
+        const begging = need - pay;
+        if (begging > 0) p.begging += begging;
+        
+        logRich(`${p.name} (AI) 完成喂养`, p.color);
+
+        setTimeout(() => {
+            gameState.harvestState.currentIdx++;
+            processHarvestTurn();
+        }, 800);
+    }
+
+    // 【修改】 繁殖阶段，现在使用通用的爆仓检查系统
+    function finishHarvestPhase() {
+        gameState.overflowQueue = []; 
+
+        PLAYERS.forEach(p => {
+            // 繁殖逻辑：相同动物>=2，生1
+            ['sheep', 'boar', 'cow'].forEach(type => {
+                if(p.animals[type] >= 2) {
+                    p.animals[type]++;
+                    logRich(`${p.name} 繁殖了 1 ${cn(type)}`, p.color);
+                }
+            });
+
+            // 检查溢出 (加入通用队列)
+            const allocation = calculateAllocation(p);
+            if (allocation.overflow > 0) {
+                gameState.overflowQueue.push({ 
+                    pIdx: p.id, 
+                    callback: endHarvestAndAdvance // 完成后继续下个阶段
+                });
+            }
+        });
+
+        if (gameState.overflowQueue.length > 0) {
+            processOverflowQueue();
+        } else {
+            endHarvestAndAdvance();
+        }
+    }
+
+    // ================= 爆仓/烹饪处理 (通用) =================
+
+    // 通用：添加动物资源并检查溢出
+    function handleAnimalGain(p, actId, callback) {
+        const allocation = calculateAllocation(p);
+        // 只要动物爆仓，系统就会介入处理
+        if (allocation.overflow > 0) {
+            gameState.overflowQueue.push({
+                pIdx: p.id,
+                callback: callback
+            });
+            processOverflowQueue();
+        } else {
+            if (callback) callback();
+        }
+    }
+
+    // 处理队列中的爆仓任务
+    function processOverflowQueue() {
+        if (gameState.overflowQueue.length === 0) return;
+
+        const task = gameState.overflowQueue[0];
+        const p = PLAYERS[task.pIdx];
+        const allocation = calculateAllocation(p);
+
+        // AI 自动处理：优先煮，没锅就扔
+        if (p.type === 'ai') {
+            const cooker = p.majors.find(m => (m.type==='cook'||m.type==='bake') && m.cook);
+            const cap = getCapacityCounts(allocation);
+            let foodGained = 0;
+            
+            ['sheep','boar','cow'].forEach(t => {
+                const diff = p.animals[t] - cap[t];
+                if (diff > 0) {
+                    if (cooker) {
+                        foodGained += diff * cooker.cook[t];
+                        logRich(`${p.name} (AI) 烹饪了 ${diff} ${cn(t)}`, p.color);
+                    } else {
+                        logRich(`${p.name} (AI) 放生了 ${diff} ${cn(t)}`, p.color);
+                    }
+                    p.animals[t] = cap[t];
+                }
+            });
+            
+            p.res.food += foodGained;
+            gameState.overflowQueue.shift();
+            // AI处理完直接执行回调
+            if (task.callback) task.callback();
+            // 检查是否还有后续任务
+            if (gameState.overflowQueue.length > 0) processOverflowQueue();
+            return;
+        }
+
+        // 人类：显示处理窗口
+        showOverflowModal(p, task);
+    }
+
+    function getCapacityCounts(allocation) {
+        let caps = { sheep:0, boar:0, cow:0 };
+        allocation.distribution.forEach(arr => {
+            arr.forEach(item => {
+                if(item.icon === '🐑') caps.sheep++;
+                if(item.icon === '🐗') caps.boar++;
+                if(item.icon === '🐮') caps.cow++;
+            });
+        });
+        return caps;
+    }
+
+    function showOverflowModal(p, task) {
+        // 即使没有溢出，只要进入这个模式，我们允许玩家烹饪任意数量
+        const allocation = calculateAllocation(p);
+        const cap = getCapacityCounts(allocation);
+        const cooker = p.majors.find(m => (m.type==='cook'||m.type==='bake') && m.cook);
+        
+        // 初始化临时变量：cooked（煮的数量），discarded（丢的数量）
+        p.overflowTemp = { 
+            sheep: {cook:0, discard:0}, 
+            boar: {cook:0, discard:0}, 
+            cow:  {cook:0, discard:0} 
+        };
+
+        const renderContent = () => {
+            let html = `<div style="text-align:center; color:white;">
+                <p>检测到动物数量变动或溢出。</p>
+                <p>你可以自由选择【烹饪】或【放生】任意数量的动物。</p>
+                ${!cooker ? '<p style="color:#ef5350; font-size:12px;">(警告：你没有烹饪设施，无法获得食物，只能放生)</p>' : ''}
+                <div style="display:flex; justify-content:center; gap:10px; margin:15px 0; flex-wrap:wrap;">`;
+            
+            ['sheep', 'boar', 'cow'].forEach(t => {
+                const total = p.animals[t];
+                const capacity = cap[t];
+                const cooked = p.overflowTemp[t].cook;
+                const discarded = p.overflowTemp[t].discard;
+                const remaining = total - cooked - discarded; // 留在农场的
+                
+                const isOverflowing = remaining > capacity;
+                const label = t==='sheep'?'🐑':(t==='boar'?'🐗':'🐮');
+                const cookRate = cooker ? cooker.cook[t] : 0;
+                
+                html += `
+                <div style="background:#333; padding:8px; border-radius:8px; min-width:120px;">
+                    <div style="font-size:18px; border-bottom:1px solid #555; margin-bottom:5px;">${label} (现有:${total})</div>
+                    <div style="color:#aaa; font-size:12px; margin-bottom:5px;">容量: ${capacity}</div>
+                    
+                    <!-- 烹饪控制 -->
+                    <div style="margin-bottom:5px; background:rgba(0,0,0,0.2); padding:4px; border-radius:4px;">
+                        <div style="font-size:12px; color:#90caf9">烹饪 (+${cookRate}食)</div>
+                        <button class="btn btn-blue" style="padding:2px 8px" onclick="modOverflow('${t}', 'cook', 1, ${total})" ${!cooker?'disabled opacity:0.5':''}>+</button>
+                        <span style="font-weight:bold; margin:0 5px">${cooked}</span>
+                        <button class="btn btn-outline" style="padding:2px 8px" onclick="modOverflow('${t}', 'cook', -1, ${total})">-</button>
+                    </div>
+
+                    <!-- 放生控制 -->
+                    <div style="margin-bottom:5px; background:rgba(0,0,0,0.2); padding:4px; border-radius:4px;">
+                        <div style="font-size:12px; color:#ef5350">放生/丢弃</div>
+                        <button class="btn btn-red" style="padding:2px 8px" onclick="modOverflow('${t}', 'discard', 1, ${total})">+</button>
+                        <span style="font-weight:bold; margin:0 5px">${discarded}</span>
+                        <button class="btn btn-outline" style="padding:2px 8px" onclick="modOverflow('${t}', 'discard', -1, ${total})">-</button>
+                    </div>
+
+                    <div style="margin-top:5px; font-size:13px;">
+                        剩余: <b style="color:${isOverflowing?'#ef5350':'#4caf50'}">${remaining}</b>
+                    </div>
+                </div>`;
+            });
+            
+            // 验证是否仍有溢出
+            let hasOverflow = false;
+            ['sheep','boar','cow'].forEach(t => {
+                if (p.animals[t] - p.overflowTemp[t].cook - p.overflowTemp[t].discard > cap[t]) hasOverflow = true;
+            });
+
+            html += `</div>
+                <div style="margin-top:15px;">
+                    <button class="btn btn-green" style="padding:10px 30px;" ${hasOverflow?'disabled style="opacity:0.5; cursor:not-allowed"':''} onclick="commitOverflow()">
+                        ${hasOverflow ? '⚠️ 仍有动物溢出' : '确认分配'}
+                    </button>
+                </div>
+            </div>`;
+            return html;
+        };
+
+        showModal("💥 动物处理", renderContent());
+        document.getElementById('modal-footer').style.display = 'none';
+        
+        window.currentOverflowTask = { 
+            p, cap, cooker, 
+            render: () => showModal("💥 动物处理", renderContent()),
+            callback: task.callback 
+        };
+    }
+
+    window.modOverflow = function(type, mode, delta, maxTotal) {
+        const task = window.currentOverflowTask;
+        const temp = task.p.overflowTemp[type];
+        
+        // 检查逻辑：cook + discard 不能超过 total
+        const currentUsed = temp.cook + temp.discard;
+        
+        if (delta > 0) {
+            if (currentUsed < maxTotal) temp[mode]++;
+        } else {
+            if (temp[mode] > 0) temp[mode]--;
+        }
+        task.render();
+    }
+
+    window.commitOverflow = function() {
+        const task = window.currentOverflowTask;
+        const p = task.p;
+        const cooker = task.cooker;
+        let foodGained = 0;
+
+        ['sheep', 'boar', 'cow'].forEach(t => {
+            const cooked = p.overflowTemp[t].cook;
+            const discarded = p.overflowTemp[t].discard;
+            
+            if (cooked > 0) {
+                foodGained += cooked * (cooker ? cooker.cook[t] : 0);
+                p.animals[t] -= cooked;
+            }
+            if (discarded > 0) {
+                p.animals[t] -= discarded;
+            }
+        });
+
+        // 再次强制修剪（理论上UI已拦截，但为了保险）
+        const finalAllocation = calculateAllocation(p);
+        applyAllocationCap(p, finalAllocation);
+
+        p.res.food += foodGained;
+        
+        let logMsg = [];
+        if (foodGained > 0) logMsg.push(`烹饪获食 ${foodGained}`);
+        logRich(`${p.name} 动物处理完成 ${logMsg.length? '(':''}${logMsg.join(', ')}${logMsg.length? ')':''}`, p.color);
+
+        closeModal();
+        gameState.overflowQueue.shift();
+        
+        // 执行回调（可能是 nextTurn，也可能是 postAction）
+        if (task.callback) task.callback();
+        
+        // 如果队列里还有任务，继续处理
+        if (gameState.overflowQueue.length > 0) processOverflowQueue();
+    }
+
+    function applyAllocationCap(p, allocation) {
+        let newCounts = { sheep:0, boar:0, cow:0 };
+        allocation.distribution.forEach(arr => {
+            arr.forEach(item => {
+                if(item.icon === '🐑') newCounts.sheep++;
+                if(item.icon === '🐗') newCounts.boar++;
+                if(item.icon === '🐮') newCounts.cow++;
+            });
+        });
+        p.animals = newCounts;
+    }
+    
+    function endHarvestAndAdvance() {
+        gameState.harvestPhase = false;
+        gameState.harvestState = null;
+        gameState.overflowQueue = null;
+        advanceRound();
+    }
+
+    // ================= 快照与撤回 (修复版) =================
+
+    function createSnapshot() {
+        const actionVals = {};
+        [...BASE_ACTIONS, ...gameState.roundCards].forEach(a => {
+            if(a.acc) actionVals[a.id] = a.cur;
+        });
+        // 【修复】 Set 在 JSON 中会丢失，需转为 Array
+        const playersCopy = PLAYERS.map(p => ({
+            ...p,
+            fences: Array.from(p.fences),
+            tempMode: p.tempMode ? {
+                ...p.tempMode,
+                existingVertices: p.tempMode.existingVertices ? Array.from(p.tempMode.existingVertices) : null
+            } : null
+        }));
+
+        return JSON.stringify({
+            players: playersCopy,
+            gameState: { ...gameState, pendingAction: null },
+            actionVals: actionVals
+        });
+    }
+
+    function restoreSnapshot(json) {
+        const data = JSON.parse(json);
+        // 【修复】 恢复时将 Array 转回 Set
+        PLAYERS = data.players.map(p => ({
+            ...p,
+            fences: new Set(p.fences),
+            tempMode: p.tempMode ? {
+                ...p.tempMode,
+                existingVertices: p.tempMode.existingVertices ? new Set(p.tempMode.existingVertices) : null
+            } : null
+        }));
+
+        gameState.occupied = data.gameState.occupied;
+        gameState.majors = data.gameState.majors;
+        gameState.nextStartPlayer = data.gameState.nextStartPlayer;
+        
+        if(data.actionVals) {
+            [...BASE_ACTIONS, ...gameState.roundCards].forEach(a => {
+                if(data.actionVals[a.id] !== undefined) a.cur = data.actionVals[a.id];
+            });
+        }
+    }
+
+    function startConfirmation(p, actId, flags = {}) {
+        document.getElementById('modal-blocker').style.display = 'block';
+        document.getElementById('confirm-bar').style.display = 'flex';
+        
+        let seconds = 15;
+        const timerEl = document.getElementById('timer-sec');
+        const fillEl = document.getElementById('timer-fill');
+        
+        timerEl.innerText = seconds;
+        fillEl.style.transition = 'none';
+        fillEl.style.width = '100%';
+        setTimeout(() => {
+            fillEl.style.transition = 'width 15s linear';
+            fillEl.style.width = '0%';
+        }, 50);
+
+        if (gameState.pendingAction && gameState.pendingAction.timer) clearInterval(gameState.pendingAction.timer);
+
+        const timerId = setInterval(() => {
+            seconds--;
+            timerEl.innerText = seconds;
+            if (seconds <= 0) userConfirmAction();
+        }, 1000);
+
+        gameState.pendingAction = { 
+            snapshot: window.currentActionSnapshot, 
+            timer: timerId, 
+            pIdx: p.id,
+            flags: flags
+        };
+    }
+
+    function userConfirmAction() {
+        if (!gameState.pendingAction) return;
+        clearInterval(gameState.pendingAction.timer);
+        const pId = gameState.pendingAction.pIdx;
+        const p = PLAYERS[pId];
+        const flags = gameState.pendingAction.flags || {};
+        
+        gameState.pendingAction = null;
+        document.getElementById('confirm-bar').style.display = 'none';
+        document.getElementById('modal-blocker').style.display = 'none';
+        
+        p.res.workers--;
+        gameState.turnIdx++;
+        render();
+        logRich(`${p.name} 确认行动`, '#888');
+        
+        if (flags.triggerBake) {
+             triggerBakePhase(p, null);
+        } else {
+             nextTurn();
+        }
+    }
+
+    function userUndoAction() {
+        if (gameState.pendingAction) {
+            clearInterval(gameState.pendingAction.timer);
+            restoreSnapshot(gameState.pendingAction.snapshot);
+            gameState.pendingAction = null;
+        } else if (window.currentActionSnapshot) {
+            restoreSnapshot(window.currentActionSnapshot);
+        }
+        document.getElementById('confirm-bar').style.display = 'none';
+        document.getElementById('modal-blocker').style.display = 'none';
+        
+        // 关掉可能打开的模态框
+        closeModal();
+
+        const p = PLAYERS[(gameState.startPlayer + gameState.turnIdx) % 4];
+        p.tempMode = null;
+        
+        ['build-toolbar', 'sow-toolbar', 'fence-finish-btn'].forEach(id => {
+            const el = document.getElementById(id); if(el) el.remove();
+        });
+        toast("行动已撤回");
+        render();
+    }
+
+    function safeDeduct(p, res, amount) {
+        p.res[res] = Math.max(0, p.res[res] - amount);
+    }
+
+    // ================= 计分系统 =================
+
+    function getTierScore(category, count) {
+        const tiers = SCORING_TIERS[category];
+        if(!tiers) return 0;
+        if(count >= tiers.length) return tiers[tiers.length-1];
+        return tiers[count];
+    }
+
+    function calculateScore(p) {
+        let s = 0;
+        const layout = analyzeFarmLayout(p);
+
+        s += getTierScore('fields', p.farm.filter(t => t === 2).length);
+        s += getTierScore('pastures', layout.pastures.length);
+        s += getTierScore('grain', p.res.grain);
+        s += getTierScore('veg', p.res.veg);
+        s += getTierScore('sheep', p.animals.sheep);
+        s += getTierScore('boar', p.animals.boar);
+        s += getTierScore('cow', p.animals.cow);
+
+        let occupiedCount = 0;
+        for(let i=0; i<15; i++) {
+            if (p.farm[i] !== 0) {
+                occupiedCount++; 
+            } else {
+                for(let pasture of layout.pastures) {
+                    if(pasture.tiles.includes(i)) {
+                        occupiedCount++;
+                        break;
+                    }
+                }
+            }
+        }
+        s -= (15 - occupiedCount); 
+
+        s += p.stablesCount;
+        const rooms = p.farm.filter(t => t === 1).length;
+        const houseVal = p.houseType === 'wood' ? 0 : (p.houseType === 'clay' ? 1 : 2);
+        s += rooms * houseVal;
+
+        s += p.res.maxWorkers * 3;
+        p.majors.forEach(m => s += m.score);
+        p.majors.filter(m => m.special === 'bonus').forEach(m => {
+            if(m.bonusType) s += Math.floor(p.res[m.bonusType] / 2);
+        });
+        s += p.begging * (-3);
+        return s;
+    }
+
+    // ================= 动物分配 & 栅栏验证 =================
+
+    function analyzeFarmLayout(p) {
+        const singles = [];
+        const houseTiles = p.farm.map((t,i)=>t===1?i:-1).filter(i=>i!==-1);
+        if(houseTiles.length > 0) {
+            singles.push({ idx: houseTiles[0], type: 'house', capacity: 1 }); 
+        }
+        let visited = new Set();
+        let pastures = [];
+        const hasW = (idx, s) => {
+            if(s==='t') return p.fences.has(`${idx}-t`);
+            if(s==='l') return p.fences.has(`${idx}-l`);
+            if(s==='r') return (idx%5===4) ? p.fences.has(`${idx}-r`) : p.fences.has(`${idx+1}-l`);
+            if(s==='b') return (idx>=10) ? p.fences.has(`${idx}-b`) : p.fences.has(`${idx+5}-t`);
+            return false;
+        };
+        for(let i=0; i<15; i++) {
+            if(visited.has(i) || (p.farm[i]!==0 && p.farm[i]!==5)) continue; 
+            let queue=[i], tiles=[], enclosed=true, hasStable=(p.farm[i]===5);
+            visited.add(i);
+            while(queue.length){
+                let u=queue.shift(); tiles.push(u);
+                if(p.farm[u]===5) hasStable=true;
+                [{n: u<5?-1:u-5, w:'t'}, {n: u>=10?-1:u+5, w:'b'}, {n: u%5===0?-1:u-1, w:'l'}, {n: u%5===4?-1:u+1, w:'r'}]
+                .forEach(nb=>{
+                    if(!hasW(u, nb.w)) { 
+                        if(nb.n===-1) enclosed=false; 
+                        else if(!visited.has(nb.n) && (p.farm[nb.n]===0 || p.farm[nb.n]===5)) { 
+                            visited.add(nb.n); queue.push(nb.n); 
+                        }
+                    }
+                });
+            }
+            if(enclosed) {
+                let capacity = tiles.length * (hasStable ? 4 : 2);
+                pastures.push({ capacity, tiles });
+            } else {
+                tiles.forEach(t => {
+                    if(p.farm[t] === 5) singles.push({ idx: t, type: 'stable', capacity: 1 });
+                });
+            }
+        }
+        return { pastures, singles };
+    }
+
+    function validateFenceRules(p) {
+        let degrees = {}; 
+        const addDeg = (x, y) => { let k = `${x},${y}`; degrees[k] = (degrees[k] || 0) + 1; };
+        p.fences.forEach(key => {
+            let [idxStr, side] = key.split('-');
+            let idx = parseInt(idxStr);
+            let r = Math.floor(idx / 5), c = idx % 5;
+            if (side === 't') { addDeg(c, r); addDeg(c+1, r); }
+            if (side === 'b') { addDeg(c, r+1); addDeg(c+1, r+1); }
+            if (side === 'l') { addDeg(c, r); addDeg(c, r+1); }
+            if (side === 'r') { addDeg(c+1, r); addDeg(c+1, r+1); }
+        });
+        for (let k in degrees) {
+            if (degrees[k] % 2 !== 0) { 
+                toast("❌ 栅栏必须闭合！"); return false;
+            }
+        }
+        const layout = analyzeFarmLayout(p);
+        for (let pasture of layout.pastures) {
+            for (let tileIdx of pasture.tiles) {
+                const type = p.farm[tileIdx];
+                if (type !== 0 && type !== 5) { 
+                    toast("❌ 圈地内只能包含空地或马厩！");
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    function getFenceVertices(fenceKey) {
+        const [idxStr, side] = fenceKey.split('-');
+        const idx = parseInt(idxStr);
+        const r = Math.floor(idx / 5); 
+        const c = idx % 5;             
+        if (side === 't') return [`${r},${c}`, `${r},${c+1}`];
+        if (side === 'b') return [`${r+1},${c}`, `${r+1},${c+1}`];
+        if (side === 'l') return [`${r},${c}`, `${r+1},${c}`];
+        if (side === 'r') return [`${r},${c+1}`, `${r+1},${c+1}`];
+        return [];
+    }
+
+    function calculateAllocation(p) {
+        const layout = analyzeFarmLayout(p);
+        let animalGroups = [
+            {type: 'sheep', count: p.animals.sheep},
+            {type: 'boar', count: p.animals.boar},
+            {type: 'cow', count: p.animals.cow}
+        ];
+        animalGroups.sort((a,b) => b.count - a.count);
+        layout.pastures.sort((a,b) => b.capacity - a.capacity);
+        const distribution = Array(15).fill(null).map(()=>[]);
+        
+        animalGroups.forEach(group => {
+            let count = group.count;
+            for(let pas of layout.pastures) {
+                if(count <= 0) break;
+                if(pas.assignedType) continue; 
+                pas.assignedType = group.type;
+                const take = Math.min(count, pas.capacity);
+                count -= take;
+                let base = Math.floor(take / pas.tiles.length);
+                let rem = take % pas.tiles.length;
+                pas.tiles.forEach((tIdx, i) => {
+                    let n = base + (i < rem ? 1 : 0);
+                    for(let k=0; k<n; k++) distribution[tIdx].push({icon: getAniIcon(group.type), type: 'ani'});
+                });
+            }
+            group.remaining = count;
+        });
+
+        let slots = [...layout.singles];
+        animalGroups.forEach(group => {
+            while(group.remaining > 0 && slots.length > 0) {
+                let slot = slots.shift();
+                distribution[slot.idx].push({icon: getAniIcon(group.type), type: 'ani'});
+                group.remaining--;
+            }
+        });
+
+        const overflow = animalGroups.reduce((sum, g) => sum + g.remaining, 0);
+        return { distribution, overflow };
+    }
+
+    function getAniIcon(type) { return type==='sheep'?'🐑':(type==='boar'?'🐗':'🐮'); }
+
+    // ================= 动作逻辑 (人类) =================
+
+    function preAction(p) {
+        if (gameState.pendingAction) return false;
+        window.currentActionSnapshot = createSnapshot();
+        return true;
+    }
+
+    function clickAction(actId, event) {
+        const p = PLAYERS[(gameState.startPlayer + gameState.turnIdx) % 4];
+        if (p.type !== 'human') return; 
+        if (gameState.pendingAction) return;
+        if (p.res.workers <= 0) return;
+
+        if (gameState.occupied[actId] !== undefined) { toast("该行动已被占用"); return; }
+
+        let act = BASE_ACTIONS.find(a=>a.id===actId) || gameState.roundCards.find(a=>a.id===actId);
+        if (!act && actId === 'major') act = { id:'major', type:'special', mode:'major' };
+        if(!act) return;
+
+        if (act.mode === 'grow') {
+            const rooms = p.farm.filter(t => t === 1).length;
+            if (rooms <= p.res.maxWorkers) {
+                toast("❌ 需要更多的空房间才能生儿育女！");
+                return;
+            }
+        }
+
+        if(['build_menu','plow','fence','sow','plow_sow','reno_major','major','grow'].includes(act.mode)) {
+            if(act.mode === 'fence' && (p.fences.size >= LIMIT_FENCES || p.res.wood < 1)) { toast("无法建造栅栏"); return; }
+            if(act.mode === 'sow' && p.res.grain===0 && p.res.veg===0) { toast("无种子"); return; }
+            if(act.mode === 'reno_major' && !checkRenovateCost(p).ok) { toast("无法翻修"); return; }
+            
+            if(!preAction(p)) return;
+
+            if(act.mode === 'build_menu') {
+                startMultiBuildMode(p, actId);
+            }
+            else if(act.mode === 'reno_major') { performRenovate(p); openMajorMarket(p, actId, true); }
+            else if(act.mode === 'major') openMajorMarket(p, actId, false);
+            else if(act.mode === 'sow') { 
+                startSowMode(p, actId); 
+            }
+            else if(act.mode === 'plow_sow') {
+                enterMode(p, 'plow_sow', actId);
+            }
+            else if(act.mode === 'fence') { 
+                p.tempMode = { mode: 'fence', actId: actId };
+                p.tempMode.existingVertices = new Set();
+                p.tempMode.initialFenceCount = p.fences.size;
+                p.fences.forEach(k => {
+                    const verts = getFenceVertices(k);
+                    verts.forEach(v => p.tempMode.existingVertices.add(v));
+                });
+                enterMode(p, 'fence', actId); 
+                toast("点击格边 (1木/根)"); 
+            }
+            else if(act.mode === 'grow') {
+                p.res.maxWorkers++;
+                logRich(`${p.name} 生了一个孩子 (人口: ${p.res.maxWorkers})`, p.color);
+                openMinorImprovementModal(p, actId);
+            }
+            else enterMode(p, act.mode, actId);
+            return;
+        }
+
+        if(!preAction(p)) return;
+
+        if(act.mode === 'meeting') {
+            gameState.nextStartPlayer = p.id;
+            logRich(`${p.name} 拿走起始标记`, p.color);
+            postAction(p, actId);
+            return;
+        }
+        if(act.mode === 'grow_force') { 
+            p.res.maxWorkers++;
+            logRich(`${p.name} 人口增长 (急于求成)`, p.color);
+            postAction(p, actId);
+            return;
+        }
+
+        if (act.type === 'res' || act.type === 'res_combo') {
+            if(act.type === 'res') {
+                const amt = act.cur || act.amount || 0;
+                if(['sheep','boar','cow'].includes(act.res)) {
+                    p.animals[act.res] += amt;
+                    if (act.acc) act.cur = 0; 
+                    logRich(`${p.name} 执行 ${act.name}`, p.color);
+                    // 触发溢出检查，完成后再 postAction
+                    handleAnimalGain(p, actId, () => postAction(p, actId));
+                } else {
+                    p.res[act.res] += amt;
+                    if (act.acc) act.cur = 0; 
+                    if(event && event.target) showFloatText(event.target, `+${amt} ${cn(act.res)}`);
+                    logRich(`${p.name} 执行 ${act.name}`, p.color);
+                    postAction(p, actId);
+                }
+            } else {
+                p.res.reed++; p.res.stone++; p.res.food++;
+                if(event && event.target) showFloatText(event.target, `+1套餐`);
+                logRich(`${p.name} 执行 ${act.name}`, p.color);
+                postAction(p, actId);
+            }
+        }
+    }
+
+    function postAction(p, actId, flags = {}) {
+        gameState.occupied[actId] = p.id;
+        p.tempMode = null;
+        render();
+        if (p.type === 'human') startConfirmation(p, actId, flags);
+    }
+
+    // ================= 自由播种系统 =================
+
+    function startSowMode(p, actId) {
+        p.tempMode = { mode: 'sow_multi', actId: actId, pendingSows: {}, currentSeed: 'grain' };
+        if(p.res.grain === 0 && p.res.veg > 0) p.tempMode.currentSeed = 'veg';
+        showSowToolbar(p);
+        render();
+    }
+
+    function showSowToolbar(p) {
+        const div = document.createElement('div');
+        div.id = 'sow-toolbar';
+        div.className = 'bottom-toolbar';
+        updateSowToolbarUI();
+        document.body.appendChild(div);
+    }
+
+    function updateSowToolbarUI() {
+        const p = PLAYERS[0];
+        const div = document.getElementById('sow-toolbar');
+        if(!div || !p.tempMode || p.tempMode.mode !== 'sow_multi') return;
+
+        let usedGrain = 0;
+        let usedVeg = 0;
+        Object.values(p.tempMode.pendingSows).forEach(type => {
+            if(type === 'grain') usedGrain++; else usedVeg++;
+        });
+        
+        let remainGrain = p.res.grain - usedGrain;
+        let remainVeg = p.res.veg - usedVeg;
+        let cur = p.tempMode.currentSeed;
+
+        div.innerHTML = `
+            <button class="btn" style="border:${cur==='grain'?'2px solid yellow':'1px solid #ccc'}; opacity:${remainGrain>0?1:0.5}" onclick="setSowSeed('grain')">
+                小麦 (${remainGrain})
+            </button>
+            <button class="btn" style="border:${cur==='veg'?'2px solid yellow':'1px solid #ccc'}; opacity:${remainVeg>0?1:0.5}" onclick="setSowSeed('veg')">
+                蔬菜 (${remainVeg})
+            </button>
+            <button class="btn btn-green" onclick="commitSow()">确认播种</button>
+            <button class="btn btn-red" onclick="userUndoAction()">撤回</button>
+        `;
+    }
+
+    window.setSowSeed = function(type) {
+        const p = PLAYERS[0];
+        p.tempMode.currentSeed = type;
+        updateSowToolbarUI();
+    }
+
+    window.commitSow = function() {
+        const p = PLAYERS[0];
+        let sownCount = 0;
+        const actId = p.tempMode.actId;
+        
+        for(const [idxStr, type] of Object.entries(p.tempMode.pendingSows)) {
+            const idx = parseInt(idxStr);
+            p.farmContent[idx] = type;
+            p.farmCounts[idx] = (type === 'grain' ? 3 : 2);
+            p.res[type]--; 
+            sownCount++;
+        }
+
+        if(sownCount > 0) logRich(`${p.name} 播种了 ${sownCount} 块农田`, p.color);
+        document.getElementById('sow-toolbar').remove();
+        
+        postAction(p, actId, { triggerBake: true });
+    }
+
+    // ================= 烤面包连锁 =================
+
+    function triggerBakePhase(p, actId) {
+        const bakeMajors = p.majors.filter(m => m.type === 'cook' || m.type === 'bake' || m.bakeRate);
+        if(bakeMajors.length === 0 || p.res.grain === 0) {
+            nextTurn();
+            return;
+        }
+        openBakeModal(p, bakeMajors);
+    }
+
+    function openBakeModal(p, bakeMajors) {
+        let html = `<p>你拥有烤面包设施，可以将剩余小麦转化为食物。</p>
+                    <p>当前小麦库存: <b>${p.res.grain}</b></p>
+                    <div style="text-align:left; background:#222; padding:10px; border-radius:4px; margin-bottom:10px;">
+                    可用设施:<br>`;
+        bakeMajors.forEach(m => {
+            let rateStr = "";
+            if(m.specialBake) rateStr = `${m.specialBake.in}麦 -> ${m.specialBake.out}饭`;
+            else if(m.bakeRate) rateStr = `1麦 -> ${m.bakeRate}饭`;
+            html += `• ${m.name}: ${rateStr}<br>`;
+        });
+        html += `</div>`;
+
+        html += `<p>请输入要烘烤的小麦数量:</p>
+                 <input type="number" id="bake-input" min="0" max="${p.res.grain}" value="0" style="font-size:20px; width:80px; text-align:center;">
+                 <div style="margin-top:15px;">
+                    <button class="btn btn-green" onclick="confirmBake()">确定烘烤</button>
+                    <button class="btn btn-wood" onclick="closeModal(); nextTurn()">不烘烤</button>
+                 </div>`;
+        
+        showModal("烤面包时间", html);
+        document.getElementById('modal-footer').style.display = 'none';
+    }
+
+    window.confirmBake = function() {
+        const p = PLAYERS[0];
+        const val = parseInt(document.getElementById('bake-input').value) || 0;
+        if(val > 0 && val <= p.res.grain) {
+            let foodGained = 0;
+            let grainToBake = val;
+            const specialOvens = p.majors.filter(m => m.specialBake).sort((a,b) => (b.specialBake.out/b.specialBake.in) - (a.specialBake.out/a.specialBake.in));
+            for(let oven of specialOvens) {
+                while(grainToBake >= oven.specialBake.in) {
+                    grainToBake -= oven.specialBake.in;
+                    foodGained += oven.specialBake.out;
+                }
+            }
+            if(grainToBake > 0) {
+                const maxRate = Math.max(...p.majors.map(m => m.bakeRate || 0));
+                if(maxRate > 0) {
+                    foodGained += grainToBake * maxRate;
+                }
+            }
+            p.res.grain -= val;
+            p.res.food += foodGained;
+            logRich(`${p.name} 烘烤了 ${val} 小麦，获得 ${foodGained} 食物`, p.color);
+            render();
+        }
+        closeModal();
+        nextTurn();
+    }
+
+    // ================= 多重建造模式 =================
+
+    function startMultiBuildMode(p, actId) {
+        p.tempMode = { mode: 'build_multi', actId: actId, pending: {}, currentTool: 'room' };
+        showBuildMultiToolbar(p);
+        render();
+    }
+
+    function showBuildMultiToolbar(p) {
+        const div = document.createElement('div');
+        div.id = 'build-toolbar';
+        div.className = 'bottom-toolbar';
+        updateBuildToolbarUI(); 
+        document.body.appendChild(div);
+    }
+
+    function updateBuildToolbarUI() {
+        const p = PLAYERS[0];
+        if (!p.tempMode || p.tempMode.mode !== 'build_multi') return;
+
+        let cost = { wood: 0, reed: 0, clay:0, stone:0 };
+        Object.values(p.tempMode.pending).forEach(type => {
+            if (type === 'room') {
+                if(p.houseType === 'wood') { cost.wood += 5; cost.reed += 2; }
+                else if(p.houseType === 'clay') { cost.clay += 5; cost.reed += 2; }
+                else if(p.houseType === 'stone') { cost.stone += 5; cost.reed += 2; }
+            } else if (type === 'stable') {
+                cost.wood += 2;
+            }
+        });
+
+        const div = document.getElementById('build-toolbar');
+        if (!div) return;
+
+        let costStr = [];
+        if(cost.wood) costStr.push(`${cost.wood}木`);
+        if(cost.clay) costStr.push(`${cost.clay}砖`);
+        if(cost.stone) costStr.push(`${cost.stone}石`);
+        if(cost.reed) costStr.push(`${cost.reed}苇`);
+        let costLabel = costStr.length ? `总花费: ${costStr.join(' ')}` : "未选择建筑";
+
+        const canAfford = p.res.wood >= cost.wood && p.res.clay >= cost.clay && p.res.stone >= cost.stone && p.res.reed >= cost.reed;
+        const hasSelected = Object.keys(p.tempMode.pending).length > 0;
+
+        div.innerHTML = `
+            <div style="color:white; margin-right:10px; font-size:12px; display:flex; align-items:center;">${costLabel}</div>
+            <button class="btn" style="border:${p.tempMode.currentTool==='room'?'2px solid yellow':'1px solid #ccc'}" onclick="setBuildTool('room')">建房间</button>
+            <button class="btn" style="border:${p.tempMode.currentTool==='stable'?'2px solid yellow':'1px solid #ccc'}" onclick="setBuildTool('stable')">建马厩</button>
+            <button class="btn btn-green" ${(!canAfford || !hasSelected) ? 'disabled style="opacity:0.5"' : ''} onclick="commitMultiBuild()">确认建造</button>
+            <button class="btn btn-red" onclick="userUndoAction()">取消</button>
+        `;
+    }
+
+    window.setBuildTool = function(tool) {
+        PLAYERS[0].tempMode.currentTool = tool;
+        updateBuildToolbarUI();
+    }
+
+    function onFarmClick(pIdx, tileIdx) {
+        const p = PLAYERS[pIdx];
+        if (p.type !== 'human' || !p.tempMode) return;
+
+        if (p.tempMode.mode === 'build_multi') {
+            if (p.farm[tileIdx] !== 0) { toast("必须在空地上建造"); return; }
+            if (p.tempMode.pending[tileIdx]) {
+                delete p.tempMode.pending[tileIdx];
+            } else {
+                if (p.tempMode.currentTool === 'room') {
+                    if (!hasNeighbor(p, tileIdx, 1) && !hasPendingNeighbor(p, tileIdx, 'room')) {
+                         toast("房间必须与现有房间相邻"); return; 
+                    }
+                    p.tempMode.pending[tileIdx] = 'room';
+                } else {
+                    if (p.stablesCount + Object.values(p.tempMode.pending).filter(x=>x==='stable').length >= LIMIT_STABLES) {
+                        toast("马厩已达上限"); return;
+                    }
+                    p.tempMode.pending[tileIdx] = 'stable';
+                }
+            }
+            updateBuildToolbarUI();
+            render();
+            return;
+        }
+        
+        if (p.tempMode.mode === 'sow_multi') {
+            if (p.farm[tileIdx] !== 2) { toast("必须是农田"); return; }
+            if (p.farmContent[tileIdx]) { toast("该农田已有作物"); return; }
+            
+            if (p.tempMode.pendingSows[tileIdx]) {
+                delete p.tempMode.pendingSows[tileIdx];
+            } else {
+                let used = Object.values(p.tempMode.pendingSows).filter(t => t === p.tempMode.currentSeed).length;
+                if (p.res[p.tempMode.currentSeed] > used) {
+                    p.tempMode.pendingSows[tileIdx] = p.tempMode.currentSeed;
+                } else {
+                    toast(`没有足够的${cn(p.tempMode.currentSeed)}种子`);
+                    return;
+                }
+            }
+            updateSowToolbarUI();
+            render();
+            return;
+        }
+        
+        if(p.tempMode.mode==='plow_sow') {
+            if(p.farm[tileIdx]===0 && (!p.farm.includes(2) || hasNeighbor(p, tileIdx, 2))) {
+                p.farm[tileIdx]=2; 
+                logRich("开垦农田", p.color); 
+                startSowMode(p, p.tempMode.actId);
+            } else toast("位置非法");
+            return;
+        }
+        
+        const m = p.tempMode.mode;
+        if(m==='plow') {
+            if(p.farm[tileIdx]===0 && (!p.farm.includes(2) || hasNeighbor(p, tileIdx, 2))) {
+                p.farm[tileIdx]=2; logRich("开垦农田", p.color); postAction(p, p.tempMode.actId);
+            } else toast("位置非法");
+        }
+    }
+
+    function hasPendingNeighbor(p, idx, type) {
+        const n = [];
+        if (idx >= 5) n.push(idx - 5); if (idx < 10) n.push(idx + 5);
+        if (idx % 5 !== 0) n.push(idx - 1); if (idx % 5 !== 4) n.push(idx + 1);
+        return n.some(x => p.tempMode.pending[x] === type);
+    }
+
+    window.commitMultiBuild = function() {
+        const p = PLAYERS[0];
+        let cost = { wood: 0, reed: 0, clay:0, stone:0 };
+        
+        for (const [idxStr, type] of Object.entries(p.tempMode.pending)) {
+            if (type === 'room') {
+                if(p.houseType === 'wood') { cost.wood += 5; cost.reed += 2; }
+                else if(p.houseType === 'clay') { cost.clay += 5; cost.reed += 2; }
+                else if(p.houseType === 'stone') { cost.stone += 5; cost.reed += 2; }
+            } else {
+                cost.wood += 2;
+            }
+        }
+        
+        if (p.res.wood < cost.wood || p.res.clay < cost.clay || p.res.stone < cost.stone || p.res.reed < cost.reed) {
+            toast("资源不足，无法完成建造！");
+            return;
+        }
+
+        let buildLog = [];
+        const actId = p.tempMode.actId;
+        for (const [idxStr, type] of Object.entries(p.tempMode.pending)) {
+            const idx = parseInt(idxStr);
+            if (type === 'room') {
+                p.farm[idx] = 1;
+            } else {
+                p.farm[idx] = 5;
+                p.stablesCount++;
+            }
+            buildLog.push(type === 'room' ? '房间' : '马厩');
+        }
+
+        p.res.wood -= cost.wood; p.res.clay -= cost.clay; p.res.stone -= cost.stone; p.res.reed -= cost.reed;
+        logRich(`${p.name} 建造了: ${buildLog.join(', ')}`, p.color);
+        document.getElementById('build-toolbar').remove();
+        postAction(p, actId);
+    }
+
+    function openMinorImprovementModal(p, actId) {
+        let html = `<p>你可以在此处打出一张次要发展卡。</p>
+                    <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:5px; margin-bottom:10px;">`;
+        html += gameState.majors.map(m => 
+            `<div class="major-card" style="cursor:pointer; width:auto;" onclick="playImprovementAfterGrow('${m.id}', '${actId}')">
+            <b>${m.name}</b><br>费:${fmtCost(m.cost)}<br>${m.desc}</div>`
+        ).join('');
+        html += `</div>`;
+        
+        // 优化：不打出卡牌时撤回行动，而不是完成行动（避免空过）
+        html += `<div style="margin-top:10px; border-top:1px solid #555; padding-top:10px;">
+            <button class="btn btn-wood" onclick="userUndoAction()">不打出，并撤回</button>
+        </div>`;
+        
+        showModal("生儿育女 - 打出卡牌", html);
+        document.getElementById('modal-footer').style.display = 'none';
+    }
+
+    window.playImprovementAfterGrow = function(mid, actId) {
+        buyMajor(mid, actId); 
+    }
+
+    window.showCardDetail = function(mid) {
+        const m = DB_MAJORS.find(x => x.id === mid);
+        if (m) {
+            let content = `
+                <div style="text-align:center; position:relative;">
+                    <h2 style="color:#ffca28; margin-top:0;">${m.name}</h2>
+                    <p><b>费用:</b> ${fmtCost(m.cost)}</p>
+                    <p><b>分数:</b> ${m.score}分</p>
+                    <div style="background:#222; padding:10px; border-radius:5px; margin:10px 0; text-align:left; font-size:13px; line-height:1.5;">
+                        ${m.desc}
+                    </div>
+                    <div style="margin-top:20px;">
+                        <button class="btn btn-red" onclick="closeModal()" style="width:100%; padding:10px;">关闭详情</button>
+                    </div>
+                </div>
+            `;
+            document.getElementById('modal-footer').style.display = 'none';
+            showModal("卡牌详情", content);
+        }
+    }
+
+    // ================= AI 逻辑 (重构：防止空过) =================
+
+    // 基础判断：是否有资格占领该格子
+    function canAIperformAction(p, act) {
+        if (act.type === 'res' || act.type === 'res_combo') return true;
+        if (act.mode === 'meeting') return true;
+
+        if (act.mode === 'sow' || act.mode === 'plow_sow') {
+            const hasSeeds = p.res.grain > 0 || p.res.veg > 0;
+            if (!hasSeeds) return false;
+            if (act.mode === 'sow') {
+                // 必须有空农田
+                const hasEmptyField = p.farm.some((t, i) => t === 2 && p.farmContent[i] === null);
+                if (!hasEmptyField) return false;
+            } else {
+                // plow: 必须有空地开垦
+                if (!p.farm.some(t => t === 0)) return false;
+            }
+            return true;
+        }
+
+        if (act.mode === 'build_menu') {
+            // 必须买得起房间或马厩，且有地皮
+            const canAffordRoom = (p.houseType==='wood' && p.res.wood>=5 && p.res.reed>=2) ||
+                                  (p.houseType==='clay' && p.res.clay>=5 && p.res.reed>=2) ||
+                                  (p.houseType==='stone' && p.res.stone>=5 && p.res.reed>=2);
+            const canAffordStable = p.res.wood >= 2;
+            const hasSpace = p.farm.some(t => t === 0);
+            if (!hasSpace) return false;
+            if (!canAffordRoom && !canAffordStable) return false;
+            // 如果只能建房但没有挨着的地方也不行（简化判断，AI可能比较笨）
+            return true;
+        }
+
+        if (act.mode === 'plow') {
+            const hasField = p.farm.some(t => t === 2);
+            return p.farm.some((t, i) => t === 0 && (!hasField || hasNeighbor(p, i, 2)));
+        }
+        if (act.mode === 'fence') return p.res.wood >= 2 && p.fences.size < LIMIT_FENCES;
+
+        if (act.mode === 'grow') {
+            const rooms = p.farm.filter(t => t === 1).length;
+            return p.res.maxWorkers < rooms;
+        }
+        
+        // 翻修：必须付得起钱
+        if (act.mode === 'reno_major' || act.mode === 'reno_fence') return checkRenovateCost(p).ok;
+        
+        // 发展卡：如果有卡且至少买得起一张
+        if (act.mode === 'major') {
+            return gameState.majors.length > 0 && gameState.majors.some(m => 
+                p.res.clay >= (m.cost.clay||0) && p.res.stone >= (m.cost.stone||0) && p.res.wood >= (m.cost.wood||0)
+            );
+        }
+
+        return true;
+    }
+
+    // AI 执行逻辑 - 返回是否成功执行，如果失败则需要重试其他行动
+    function executeAIAction(p, act) {
+        // 如果是资源类，肯定成功（因为是累积的，即使为0也视为拿了0，符合规则）
+        // 但为了更智能，如果资源为0则尽量不拿（除非没别的拿）
+        if(act.type === 'res' && act.acc && act.cur === 0) {
+             // 资源格为空，AI 认为失败，尝试别的
+             return false; 
+        }
+
+        // 真正执行扣减和逻辑
+        if(act.type === 'res') {
+            let amt = act.cur || act.amount || 0;
+            if(['sheep','boar','cow'].includes(act.res)) {
+                 p.animals[act.res] += amt;
+                 if(act.acc) act.cur = 0;
+                 handleAnimalGain(p, act.id, null);
+            } else {
+                 p.res[act.res] += amt;
+                 if(act.acc) act.cur = 0;
+            }
+            return true;
+        } 
+        else if (act.type === 'res_combo') {
+            p.res.reed++; p.res.stone++; p.res.food++;
+            return true;
+        }
+        else if(act.mode === 'build_menu') {
+            let builtCount = 0;
+            // AI 简单逻辑：能建房就建房，否则建马厩
+            let loopSafety = 0;
+            while (loopSafety++ < 20) {
+                let costW=0, costC=0, costS=0, costR=2;
+                if(p.houseType==='wood') costW=5; else if(p.houseType==='clay') costC=5; else costS=5;
+
+                let canBuildRoom = p.res.wood >= costW && p.res.clay >= costC && p.res.stone >= costS && p.res.reed >= costR;
+                if (!canBuildRoom) break;
+
+                let targetIdx = -1;
+                for(let i=0; i<15; i++) {
+                    if(p.farm[i]===0 && hasNeighbor(p, i, 1)) { targetIdx = i; break; }
+                }
+                
+                if (targetIdx !== -1) {
+                    p.farm[targetIdx] = 1; 
+                    p.res.wood-=costW; p.res.clay-=costC; p.res.stone-=costS; p.res.reed-=costR;
+                    builtCount++;
+                } else {
+                    break; 
+                }
+            }
+            // 只有建不起房才考虑马厩
+            while (p.stablesCount < LIMIT_STABLES && p.res.wood >= 2) {
+                let targetIdx = -1;
+                for(let i=0; i<15; i++) {
+                    if(p.farm[i]===0) { targetIdx = i; break; }
+                }
+                if (targetIdx !== -1) {
+                    p.farm[targetIdx] = 5;
+                    p.res.wood -= 2;
+                    p.stablesCount++;
+                    builtCount++;
+                } else {
+                    break;
+                }
+            }
+            if (builtCount > 0) {
+                logRich(`${p.name} 建造了 ${builtCount} 个建筑`, p.color);
+                return true;
+            }
+            return false; // 一个都没建，视为失败
+        }
+        else if(act.mode === 'plow' || act.mode === 'plow_sow') {
+             const hasField = p.farm.some(t => t === 2);
+             let targetIdx = -1;
+             for(let i=0; i<15; i++) {
+                 if(p.farm[i]===0 && (!hasField || hasNeighbor(p, i, 2))) { targetIdx = i; break; }
+             }
+             if (targetIdx !== -1) {
+                 p.farm[targetIdx] = 2;
+                 logRich(`${p.name} 开垦农田`, p.color);
+                 if(act.mode === 'plow_sow') {
+                     if(p.res.grain > 0) { p.res.grain--; p.farmContent[targetIdx]='grain'; p.farmCounts[targetIdx]=3; }
+                     else if(p.res.veg > 0) { p.res.veg--; p.farmContent[targetIdx]='veg'; p.farmCounts[targetIdx]=2; }
+                 }
+                 return true;
+             }
+             return false;
+        }
+        else if(act.mode === 'sow') {
+            let sown = 0;
+            p.farm.forEach((t,i) => {
+                if(t===2 && p.farmContent[i]===null) {
+                     if(p.res.grain > 0) { p.res.grain--; p.farmContent[i]='grain'; p.farmCounts[i]=3; sown++; }
+                     else if(p.res.veg > 0) { p.res.veg--; p.farmContent[i]='veg'; p.farmCounts[i]=2; sown++; }
+                }
+            });
+            if(sown>0) {
+                logRich(`${p.name} 播种了 ${sown} 块田`, p.color);
+                // AI 自动烘烤逻辑
+                const bakeMajors = p.majors.filter(m => m.type === 'cook' || m.type === 'bake' || m.bakeRate);
+                if(bakeMajors.length > 0 && p.res.grain > 0 && p.res.food < p.res.maxWorkers*3) {
+                    const maxRate = Math.max(...p.majors.map(m => m.bakeRate || 0));
+                    if(maxRate > 0) {
+                         let bakeAmt = Math.min(p.res.grain, 2); 
+                         p.res.grain -= bakeAmt;
+                         p.res.food += bakeAmt * maxRate;
+                         logRich(`${p.name} 烘烤了面包`, p.color);
+                    }
+                }
+                return true;
+            }
+            return false; // 没地播
+        }
+        else if(act.mode === 'meeting') { 
+            gameState.nextStartPlayer = p.id; 
+            logRich(`${p.name} 拿起始`, p.color); 
+            return true; 
+        }
+        else if(act.mode === 'grow') { 
+            p.res.maxWorkers++; 
+            logRich(`${p.name} 生儿育女`, p.color); 
+            // AI 简化：不打卡
+            return true; 
+        }
+        else if(act.mode === 'grow_force') {
+            p.res.maxWorkers++;
+            logRich(`${p.name} 急于求成`, p.color);
+            return true;
+        }
+        else if(act.mode === 'fence') {
+            // AI 极简栅栏逻辑：如果木头够多，围一个最大的空矩形（这里随机围一个）
+            // 为简化，AI 如果有木头就视为成功（虽然没实际造），避免卡死
+            // 后续可优化：AI 栅栏算法
+            if (p.res.wood >= 4) {
+                // 假装造了，扣点木头给点分？暂不实现复杂AI画图
+                logRich(`${p.name} 规划了栅栏 (AI跳过建设细节)`, p.color);
+                return true; 
+            }
+            return false;
+        }
+        else if (act.mode === 'major' || act.mode === 'reno_major') {
+            if (act.mode === 'reno_major') {
+                performRenovate(p);
+                logRich(`${p.name} 翻修了房屋`, p.color);
+            }
+            // 买一张最贵的买得起的卡
+            const affordable = gameState.majors.filter(m => 
+                p.res.clay >= (m.cost.clay||0) && p.res.stone >= (m.cost.stone||0) && p.res.wood >= (m.cost.wood||0)
+            ).sort((a,b) => b.score - a.score);
+
+            if (affordable.length > 0) {
+                const m = affordable[0];
+                safeDeduct(p, 'clay', m.cost.clay||0); 
+                safeDeduct(p, 'stone', m.cost.stone||0); 
+                safeDeduct(p, 'wood', m.cost.wood||0);
+                p.majors.push(m); 
+                gameState.majors = gameState.majors.filter(x=>x.id!==m.id);
+                logRich(`${p.name} 购买了发展卡 [${m.name}]`, p.color);
+                return true;
+            } else {
+                // 只有翻修没买卡，如果是 reno_major 也算成功
+                return act.mode === 'reno_major';
+            }
+        }
+        
+        return false;
+    }
+
+    function aiPlay(p) {
+        if (p.res.workers <= 0) { gameState.turnIdx++; nextTurn(); return; }
+
+        // 1. 获取所有未占用的行动
+        let available = [...BASE_ACTIONS, ...gameState.roundCards].filter(a => !gameState.occupied[a.id]);
+        
+        // 2. 过滤出规则上允许进入的行动 (pre-check)
+        available = available.filter(act => canAIperformAction(p, act));
+        
+        // 3. 随机打乱尝试
+        available.sort(() => Math.random() - 0.5);
+
+        let performed = false;
+        for (let act of available) {
+            // 尝试执行，executeAIAction 会判断是否有实际产出
+            // 如果资源不够、没地建等导致无效操作，会返回 false
+            if (executeAIAction(p, act)) {
+                // 成功执行
+                gameState.occupied[act.id] = p.id;
+                p.res.workers--;
+                logRich(`${p.name} 占领了 [${act.name}]`, p.color);
+                performed = true;
+                break;
+            }
+        }
+
+        if (!performed) {
+            // 极端情况：无事可做，强制跳过（避免死循环）
+            logRich(`${p.name} 无事可做，跳过回合`, p.color);
+            p.res.workers = 0;
+        }
+
+        render();
+        gameState.turnIdx++;
+        nextTurn(); 
+    }
+
+    // ================= 渲染与工具 =================
+
+    function render() {
+        document.getElementById('round-info').innerText = `第 ${gameState.round} 轮`;
+        renderActions('base-actions', BASE_ACTIONS);
+        renderActions('round-actions', gameState.roundCards);
+        document.getElementById('major-market').innerHTML = gameState.majors.map(m => 
+            `<div class="major-card" onclick="toast('请通过行动格打出发展卡')">${m.name}<br>${fmtCost(m.cost)}</div>`
+        ).join('');
+        const con = document.getElementById('players-container');
+        con.innerHTML = '';
+        PLAYERS.forEach(p => con.appendChild(renderPlayer(p)));
+    }
+
+    function renderActions(cid, list) {
+        const el = document.getElementById(cid);
+        el.innerHTML = '';
+        list.forEach(a => {
+            const d = document.createElement('div');
+            d.className = 'action-slot';
+            if(gameState.occupied[a.id] !== undefined) {
+                d.classList.add('disabled');
+                const who = PLAYERS[gameState.occupied[a.id]];
+                d.style.borderLeft = `5px solid ${who.color}`;
+                d.innerHTML += `<div style="font-size:10px; color:${who.color}">${who.name}</div>`;
+            } else d.onclick = (e) => clickAction(a.id, e);
+            if(a.acc && a.cur > 0) d.innerHTML += `<div class="acc-badge">${a.cur}</div>`;
+            d.innerHTML += `<b>${a.name}</b>`;
+            el.appendChild(d);
+        });
+    }
+
+    function renderPlayer(p) {
+        const div = document.createElement('div');
+        div.className = `player-panel ${p.tempMode ? 'active-mode' : ''}`;
+        div.id = `p-${p.id}`;
+        if(gameState.startPlayer === p.id) div.style.borderLeftColor = '#ffeb3b';
+        const isNextStart = (gameState.nextStartPlayer === p.id);
+        
+        const allocation = calculateAllocation(p);
+        const currentScore = calculateScore(p);
+
+        // 【修改】 渲染卡牌时添加 major 类
+        let cardsHtml = p.majors.map(m => 
+            `<div class="mini-card major" onclick="showCardDetail('${m.id}')" title="${m.name}">${m.name.substring(0,2)}</div>`
+        ).join('');
+
+        div.innerHTML = `
+            <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
+                <div style="color:${p.color}; font-weight:bold;">${p.name} ${isNextStart ? '🚩' : ''} 
+                <span style="font-size:11px; color:#aaa;">(工:${p.res.workers}/${p.res.maxWorkers})</span>
+                <span style="color:#ffd700; margin-left:10px;">🌟: ${currentScore}</span>
+                </div>
+            </div>
+            <div class="res-row">
+                <span>${cn('wood', p.res.wood)}</span> <span>${cn('clay', p.res.clay)}</span> 
+                <span>${cn('reed', p.res.reed)}</span> <span>${cn('stone', p.res.stone)}</span> | 
+                <span>${cn('food', p.res.food)}</span> <span>${cn('grain', p.res.grain)}</span> 
+                <span>${cn('veg', p.res.veg)}</span>
+            </div>
+            <div class="res-row">
+                <span>${cn('sheep', p.animals.sheep)}</span> <span>${cn('boar', p.animals.boar)}</span> <span>${cn('cow', p.animals.cow)}</span>
+                ${p.begging>0 ? `<span style="color:red; border:1px solid red;">🆘 ${p.begging}</span>`:''}
+            </div>
+            <div class="mini-card-container">${cardsHtml}</div>
+            <div class="farm-wrapper">${renderFarmGrid(p, allocation.distribution)}</div>
+        `;
+        return div;
+    }
+
+    function renderFarmGrid(p, distribution) {
+        let html = '<div class="farm-grid">';
+        for(let i=0; i<15; i++) {
+            let classes = ['tile'];
+            if(p.farm[i] === 1) classes.push(`house-${p.houseType}`);
+            else if(p.farm[i] === 2) classes.push('field');
+            if(p.tempMode && p.type==='human' && p.tempMode.mode==='fence') classes.push('edit-fence');
+            
+            if (p.tempMode && p.tempMode.mode === 'build_multi' && p.tempMode.pending[i]) {
+                if (p.tempMode.pending[i] === 'room') classes.push('ghost-room');
+                else classes.push('ghost-stable');
+            }
+            if (p.tempMode && p.tempMode.mode === 'sow_multi' && p.tempMode.pendingSows[i]) {
+                classes.push('ghost-sow');
+            }
+
+            let inner = '';
+            if(distribution[i]) {
+                distribution[i].forEach((item, idx) => {
+                    const seed = (i * 13 + idx * 7) % 100;
+                    const top = 5 + (seed % 35);
+                    const left = 5 + ((seed * 3) % 35);
+                    inner += `<div class="scatter-item" style="top:${top}px; left:${left}px">${item.icon}</div>`;
+                });
+            }
+
+            if(p.farm[i]===2 && p.farmContent[i]) {
+                let icon = p.farmContent[i]==='grain'?'🌾':'🥕';
+                let count = p.farmCounts[i];
+                for(let k=0; k<Math.min(count,5); k++) {
+                     const top = 5 + (k*5); const left = 5 + (k*5);
+                     inner += `<div class="scatter-item" style="top:${top}px; left:${left}px">${icon}</div>`;
+                }
+                if(count>1) inner += `<div class="scatter-count">${count}</div>`;
+            }
+
+            if(p.farm[i] === 5) inner += '<div class="stable-icon">🏚️</div>';
+            
+            if(p.fences.has(`${i}-t`)) inner += `<div class="fence h"></div>`;
+            if(p.fences.has(`${i}-l`)) inner += `<div class="fence v"></div>`;
+            if(p.fences.has(`${i}-r`)) inner += `<div class="fence v" style="left:auto; right:-4px"></div>`;
+            if(p.fences.has(`${i}-b`)) inner += `<div class="fence h" style="top:auto; bottom:-4px"></div>`;
+
+            if(p.type==='human' && p.tempMode && p.tempMode.mode==='fence') {
+                inner += `<div class="fence-slot fs-top" onclick="onFenceClick(${p.id},${i},'top'); event.stopPropagation()"></div>
+                          <div class="fence-slot fs-lft" onclick="onFenceClick(${p.id},${i},'left'); event.stopPropagation()"></div>`;
+                if (i % 5 === 4) inner += `<div class="fence-slot fs-rgt" onclick="onFenceClick(${p.id},${i},'right'); event.stopPropagation()"></div>`;
+                if (i >= 10) inner += `<div class="fence-slot fs-btm" onclick="onFenceClick(${p.id},${i},'btm'); event.stopPropagation()"></div>`;
+            }
+            html += `<div class="${classes.join(' ')}" onclick="onFarmClick(${p.id}, ${i})">${inner}</div>`;
+        }
+        return html + '</div>';
+    }
+
+    function enterMode(p, mode, actId) { p.tempMode = { mode, actId }; render(); }
+    function showFloatText(target, text) {
+        const rect = target.getBoundingClientRect();
+        const el = document.createElement('div');
+        el.className = 'float-text';
+        el.innerText = text;
+        el.style.left = (rect.left + 20) + 'px'; el.style.top = rect.top + 'px'; el.style.color='#4caf50';
+        document.body.appendChild(el);
+        setTimeout(() => { el.style.transform = 'translateY(-50px)'; el.style.opacity = 0; }, 50);
+        setTimeout(() => el.remove(), 1000);
+    }
+    function checkRenovateCost(p) {
+        const cnt = p.farm.filter(t=>t===1).length;
+        if(p.houseType==='wood' && p.res.clay>=cnt && p.res.reed>=cnt) return {ok:true, cost:{clay:cnt, reed:cnt}, nextType:'clay'};
+        if(p.houseType==='clay' && p.res.stone>=cnt && p.res.reed>=cnt) return {ok:true, cost:{stone:cnt, reed:cnt}, nextType:'stone'};
+        return {ok:false};
+    }
+    function performRenovate(p) {
+        let c = checkRenovateCost(p);
+        safeDeduct(p, 'clay', c.cost.clay||0); safeDeduct(p, 'stone', c.cost.stone||0); safeDeduct(p, 'reed', c.cost.reed);
+        p.houseType = c.nextType;
+    }
+    function hasNeighbor(p, idx, type) {
+        const n = [];
+        if (idx >= 5) n.push(idx - 5); if (idx < 10) n.push(idx + 5);
+        if (idx % 5 !== 0) n.push(idx - 1); if (idx % 5 !== 4) n.push(idx + 1);
+        return n.some(x => p.farm[x] === type);
+    }
+    
+    function onFenceClick(pIdx, t, s) {
+        const p = PLAYERS[pIdx];
+        if (p.type !== 'human') return; 
+        
+        let k = s==='top'?`${t}-t`:s==='left'?`${t}-l`:s==='right'?(t%5===4?`${t}-r`:`${t+1}-l`):(t>=10?`${t}-b`:`${t+5}-t`);
+        
+        if(!p.fences.has(k)) { 
+            if (p.res.wood <= 0) {
+                toast("木头不足！无法建造更多栅栏。");
+                return;
+            }
+
+            if (p.tempMode && p.tempMode.initialFenceCount > 0 && p.fences.size === p.tempMode.initialFenceCount) {
+                const newVerts = getFenceVertices(k);
+                const isConnected = newVerts.some(v => p.tempMode.existingVertices.has(v));
+                if (!isConnected) {
+                    toast("❌ 新栅栏必须与现有栅栏连接！");
+                    return;
+                }
+            }
+
+            p.res.wood--; 
+            p.fences.add(k); 
+            render(); 
+            if(!document.getElementById('fence-finish-btn')) {
+                const d = document.createElement('div'); d.id='fence-finish-btn'; d.className='bottom-toolbar';
+                d.innerHTML=`<button class="btn btn-green" onclick="finishFence('${p.tempMode.actId}')">完成</button>
+                             <button class="btn btn-red" onclick="userUndoAction()">撤回</button>`; 
+                document.body.appendChild(d);
+            }
+        }
+    }
+    window.finishFence = function(actId) { document.getElementById('fence-finish-btn').remove(); postAction(PLAYERS[0], actId); }
+    
+    function cn(k, v) { const m={wood:'🪵',clay:'🧱',reed:'🎋',stone:'🪨',food:'🥣',grain:'🌾',veg:'🥕',sheep:'🐑',boar:'🐗',cow:'🐮'}; return `<span class="log-badge lb-${k}">${m[k]}${v!==undefined?v:''}</span>`; }
+    function fmtCost(c) { return Object.entries(c).map(([k,v])=>`${v}${k==='wood'?'木':(k==='clay'?'砖':(k==='stone'?'石':'苇'))}`).join(' '); }
+    function toast(msg) { const t=document.getElementById('toast'); t.innerText=msg; t.style.opacity=1; setTimeout(()=>t.style.opacity=0,2000); }
+    function logRich(msg, c) { const l=document.getElementById('log'); l.innerHTML=`<div class="log-entry"><span style="color:${c||'#ccc'}">${msg}</span></div>`+l.innerHTML; }
+    function showBuildChoice(p, actId) { enterMode(p, 'build_room', actId); toast("点击空地建房"); }
+    
+    // 【修改】 人类玩家购买发展卡逻辑优化
+    function openMajorMarket(p, actId, skip) {
+         let h = gameState.majors.map(m=>`<div class="major-card" onclick="buyMajor('${m.id}','${actId}')">${m.name}<br>${fmtCost(m.cost)}</div>`).join('');
+         
+         // 如果选择不买/跳过，这里调用 userUndoAction 撤回派遣，而不是 postAction 完成行动（防止空过）
+         // 除非是 reno_major 且已经翻修了，那种情况需要特殊处理，这里简化为全部撤回
+         if(skip) {
+             h+=`<br><button class="btn btn-wood" onclick="closeModal(); postAction(PLAYERS[0],'${actId}')">仅翻修不买卡</button>`;
+         } else {
+             h+=`<br><button class="btn btn-red" onclick="userUndoAction()">取消购买并撤回工人</button>`;
+         }
+         
+         showModal('购买发展卡', h);
+    }
+
+    window.buyMajor = function(mid, actId) {
+        const p = PLAYERS[0]; const m = gameState.majors.find(x=>x.id===mid);
+        if(p.res.clay>=(m.cost.clay||0) && p.res.stone>=(m.cost.stone||0) && p.res.wood>=(m.cost.wood||0)) {
+            safeDeduct(p, 'clay', m.cost.clay||0); safeDeduct(p, 'stone', m.cost.stone||0); safeDeduct(p, 'wood', m.cost.wood||0);
+            p.majors.push(m); gameState.majors = gameState.majors.filter(x=>x.id!==mid);
+            closeModal(); postAction(p, actId);
+        } else toast("资源不足");
+    }
+
+    function endGame() {
+        let html = `<h2>🎉 游戏结束!</h2><table class="score-table"><tr><th>玩家</th><th>总分</th></tr>`;
+        const sortedPlayers = [...PLAYERS].sort((a,b) => calculateScore(b) - calculateScore(a));
+        sortedPlayers.forEach(p => {
+            html += `<tr><td style="color:${p.color}; font-weight:bold;">${p.name}</td><td class="score-total">${calculateScore(p)}</td></tr>`;
+        });
+        html += `</table>`;
+        showModal("最终得分", html);
+        document.getElementById('modal-footer').style.display = 'none'; 
+    }
+    function showModal(t, h) { document.getElementById('modal-title').innerText=t; document.getElementById('modal-body').innerHTML=h; document.getElementById('modal').style.display='flex'; }
+    function closeModal() { document.getElementById('modal').style.display='none'; }
+
+    init();
+    </script>
+</body>
+</html>
